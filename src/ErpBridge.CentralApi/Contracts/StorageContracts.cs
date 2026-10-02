@@ -256,3 +256,165 @@ public sealed class ProductImageOrderRequest
 {
     [JsonPropertyName("ids")] public Guid[]? Ids { get; set; }
 }
+
+// ---- trash and clean-up (GOAL_DEPOLAMA_R2 S9) ---------------------------------------------------------
+
+/// <summary>One deletion in the storage trash.</summary>
+public sealed class StorageTrashItemDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+
+    /// <summary><c>product</c>, <c>xml</c>, <c>catalog</c>, <c>banner</c>, <c>task</c>, <c>expense</c>, <c>vehicle</c>.</summary>
+    [JsonPropertyName("area")] public string Area { get; set; } = string.Empty;
+
+    /// <summary><c>product_image</c>, <c>catalog_image</c>, <c>banner</c>, <c>banner_image</c>, <c>task_attachment</c>, <c>expense_attachment</c>, <c>files</c>.</summary>
+    [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
+
+    /// <summary>A stock code, a banner title, a task title or a document id.</summary>
+    [JsonPropertyName("label")] public string Label { get; set; } = string.Empty;
+    [JsonPropertyName("sizeBytes")] public long SizeBytes { get; set; }
+    [JsonPropertyName("fileCount")] public int FileCount { get; set; }
+
+    /// <summary><c>user</c>, <c>cleanup</c>, <c>sweep</c> or <c>owner_deleted</c>.</summary>
+    [JsonPropertyName("source")] public string Source { get; set; } = string.Empty;
+    [JsonPropertyName("trashedAtMs")] public long TrashedAtMs { get; set; }
+    [JsonPropertyName("trashedByName")] public string? TrashedByName { get; set; }
+
+    /// <summary>Whole days before it is deleted for good (0 = on the next daily pass).</summary>
+    [JsonPropertyName("daysLeft")] public int DaysLeft { get; set; }
+
+    /// <summary>False for files whose record is gone (the sweep, a long-deleted task): they can only be purged.</summary>
+    [JsonPropertyName("restorable")] public bool Restorable { get; set; }
+
+    /// <summary>The small picture: a CDN address, or a short presigned one for a private file; null when none.</summary>
+    [JsonPropertyName("thumbUrl")] public string? ThumbUrl { get; set; }
+}
+
+/// <summary><c>GET /api/v1/storage/trash?page=</c>: newest first, 50 a page.</summary>
+public sealed class StorageTrashResponse
+{
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("totalBytes")] public long TotalBytes { get; set; }
+
+    /// <summary>Days an item stays before it is deleted for good (<c>Storage:TrashDays</c>).</summary>
+    [JsonPropertyName("trashDays")] public int TrashDays { get; set; }
+    [JsonPropertyName("items")] public StorageTrashItemDto[] Items { get; set; } = [];
+}
+
+/// <summary><c>POST /api/v1/storage/trash/restore</c> and <c>…/purge</c>: the items, or (purge only) <c>all: true</c>.</summary>
+public sealed class StorageTrashRequest
+{
+    [JsonPropertyName("ids")] public Guid[]? Ids { get; set; }
+    [JsonPropertyName("all")] public bool All { get; set; }
+}
+
+/// <summary>One item's restore.</summary>
+public sealed class StorageTrashRestoreItemDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("label")] public string Label { get; set; } = string.Empty;
+    [JsonPropertyName("restored")] public bool Restored { get; set; }
+
+    /// <summary>Why it stayed in the trash (Turkish), e.g. the product's photo limit is full.</summary>
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
+}
+
+/// <summary><c>POST /api/v1/storage/trash/restore</c>: every item's outcome; a failed one stays in the trash.</summary>
+public sealed class StorageTrashRestoreResponse
+{
+    [JsonPropertyName("restored")] public int Restored { get; set; }
+    [JsonPropertyName("restoredBytes")] public long RestoredBytes { get; set; }
+    [JsonPropertyName("failed")] public int Failed { get; set; }
+    [JsonPropertyName("items")] public StorageTrashRestoreItemDto[] Items { get; set; } = [];
+}
+
+/// <summary><c>POST /api/v1/storage/trash/purge</c>: deleted for good, the quota freed now.</summary>
+public sealed class StorageTrashPurgeResponse
+{
+    [JsonPropertyName("purged")] public int Purged { get; set; }
+    [JsonPropertyName("purgedBytes")] public long PurgedBytes { get; set; }
+
+    /// <summary>Items the store did not answer for; they stay and the daily pass tries again.</summary>
+    [JsonPropertyName("failed")] public int Failed { get; set; }
+}
+
+/// <summary>A clean-up group's size.</summary>
+public sealed class StorageCleanupGroupDto
+{
+    /// <summary><c>missing_products</c>, <c>out_of_stock</c>, <c>closed_tasks</c>, <c>ended_banners</c>, <c>xml_unused</c>.</summary>
+    [JsonPropertyName("group")] public string Group { get; set; } = string.Empty;
+    [JsonPropertyName("label")] public string Label { get; set; } = string.Empty;
+    [JsonPropertyName("count")] public int Count { get; set; }
+    [JsonPropertyName("bytes")] public long Bytes { get; set; }
+
+    /// <summary>True for <c>xml_unused</c>: deleted for good, not trashed (the feed makes them again).</summary>
+    [JsonPropertyName("purgesDirectly")] public bool PurgesDirectly { get; set; }
+}
+
+/// <summary><c>GET /api/v1/storage/cleanup/summary?days=</c>.</summary>
+public sealed class StorageCleanupSummaryResponse
+{
+    /// <summary>The age of a closed task whose pictures count (default 90).</summary>
+    [JsonPropertyName("days")] public int Days { get; set; }
+    [JsonPropertyName("groups")] public StorageCleanupGroupDto[] Groups { get; set; } = [];
+}
+
+/// <summary>A record whose files the clean-up can free.</summary>
+public sealed class StorageCleanupCandidateDto
+{
+    /// <summary>The owner's id (photo, picture, banner, task picture, XML picture): what <c>POST cleanup</c> takes.</summary>
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+
+    /// <summary><c>product_image</c>, <c>catalog_image</c>, <c>xml_image</c>, <c>task_attachment</c> or <c>banner</c>.</summary>
+    [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
+    [JsonPropertyName("label")] public string Label { get; set; } = string.Empty;
+    [JsonPropertyName("area")] public string Area { get; set; } = string.Empty;
+    [JsonPropertyName("sizeBytes")] public long SizeBytes { get; set; }
+    [JsonPropertyName("thumbUrl")] public string? ThumbUrl { get; set; }
+
+    /// <summary>A short Turkish note: what it is, when the task closed, why the XML pictures are unused.</summary>
+    [JsonPropertyName("extra")] public string? Extra { get; set; }
+}
+
+/// <summary><c>GET /api/v1/storage/cleanup/candidates?group=&amp;page=&amp;days=</c>: biggest first, 50 a page.</summary>
+public sealed class StorageCleanupCandidatesResponse
+{
+    [JsonPropertyName("group")] public string Group { get; set; } = string.Empty;
+    [JsonPropertyName("label")] public string Label { get; set; } = string.Empty;
+    [JsonPropertyName("page")] public int Page { get; set; }
+    [JsonPropertyName("pageSize")] public int PageSize { get; set; }
+    [JsonPropertyName("total")] public int Total { get; set; }
+    [JsonPropertyName("totalBytes")] public long TotalBytes { get; set; }
+    [JsonPropertyName("items")] public StorageCleanupCandidateDto[] Items { get; set; } = [];
+}
+
+/// <summary><c>POST /api/v1/storage/cleanup</c>: the chosen candidates of a group, or all of it.</summary>
+public sealed class StorageCleanupRequest
+{
+    [JsonPropertyName("group")] public string? Group { get; set; }
+    [JsonPropertyName("ids")] public Guid[]? Ids { get; set; }
+    [JsonPropertyName("all")] public bool All { get; set; }
+
+    /// <summary><c>closed_tasks</c>: the same age the list was read with (default 90).</summary>
+    [JsonPropertyName("days")] public int? Days { get; set; }
+}
+
+/// <summary><c>POST /api/v1/storage/cleanup</c>'s answer.</summary>
+public sealed class StorageCleanupResponse
+{
+    [JsonPropertyName("group")] public string Group { get; set; } = string.Empty;
+
+    /// <summary>Records moved to the trash (restorable for the trash period; their bytes count until the trash is emptied).</summary>
+    [JsonPropertyName("trashedCount")] public int TrashedCount { get; set; }
+    [JsonPropertyName("trashedBytes")] public long TrashedBytes { get; set; }
+
+    /// <summary>XML pictures deleted for good (the feed downloads them again when wanted); their bytes are free now.</summary>
+    [JsonPropertyName("purgedCount")] public int PurgedCount { get; set; }
+    [JsonPropertyName("purgedBytes")] public long PurgedBytes { get; set; }
+
+    /// <summary>Candidates left past one request's limit: send again.</summary>
+    [JsonPropertyName("remaining")] public int Remaining { get; set; }
+    [JsonPropertyName("message")] public string Message { get; set; } = string.Empty;
+}

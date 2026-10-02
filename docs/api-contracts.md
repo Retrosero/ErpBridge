@@ -582,7 +582,7 @@ burada sunucunun seçtiği ayrıntılar. Ayrıntı: KB 00 kural 36.
   object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`), `X-Robots-Tag: noindex`,
   `Referrer-Policy: same-origin`, `Strict-Transport-Security: max-age=31536000`, `X-Content-Type-Options: nosniff`.
 
-## Merkezi dosya deposu — `/api/v1/storage`, `/api/v1/admin/tenants/{id}/storage` (GOAL_DEPOLAMA_R2 S1, S8)
+## Merkezi dosya deposu — `/api/v1/storage`, `/api/v1/admin/tenants/{id}/storage` (GOAL_DEPOLAMA_R2 S1–S9)
 
 Firmanın kalıcı resimleri Cloudflare R2'de, firma kodunun klasöründe (`{FIRMAKODU}/{alan}/{yyyy}/{MM}/{id}-{varyant}.{uzantı}`)
 ve tek kotayla durur. Alanlar: herkese açık kova `product`, `xml`, `catalog`, `banner`; kimliğe bağlı kova `task`, `expense`,
@@ -646,6 +646,37 @@ reddedilir, bağlantı doğrulanan IP'ye sabitlenir, yönlendirme elle en çok 3
 |---|---|---|
 | `GET /api/v1/storage/xml-images/status` | `action.storage.manage` | `{ configured, moduleEnabled, downloadImages, storageAvailable, requestedAtMs?, startedAtMs?, finishedAtMs?, status?, message?, stats?, imageCount, imageBytes, productCount }` — `status` `ok\|partial\|quota\|failed` (ilk çalışmadan önce null); `stats { feedRecords, matchedProducts, wanted, added, replaced, removed, unchanged, failed, remaining }`; `message` kısa Türkçe açıklama (adres içermez). Yetkisiz `403 STORAGE_FORBIDDEN` |
 | `POST /api/v1/storage/xml-images/sync` | `action.storage.manage` | Gövde yok. `202` + status gövdesi; eşitleme bir dakika içinde başlar (bekleyen istek yerini korur). `403 STORAGE_FORBIDDEN`, modül yoksa `403 MODULE_NOT_ENABLED`, XML ayarı yoksa `409 XML_FEED_NOT_CONFIGURED`, görsel indirme kapalıysa `409 XML_IMAGES_DISABLED`, depo ayarsızsa `503 STORAGE_UNAVAILABLE` |
+
+**Çöp kutusu ve temizlik (S9)** — yalnız `action.storage.manage` (Admin, Yönetici; kilitli), başkasına `403 STORAGE_FORBIDDEN`.
+Kullanıcının bir silmesi (ürün fotoğrafı, katalog görseli, banner ve banner'ın değiştirilen görseli, görev resmi, fiş) ve "Alan aç"
+çöpe bir **öğe** bırakır: dosyalar + kaydı geri koymaya yetecek anlık görüntü. Geri alma kaydı yüklemedeki kilit ve sınırlarla geri
+koyar (ürün başı 8 fotoğraf ve aynı fotoğraf bir kez; katalog ürün görsel sınırı; banner sınırları; görev başı 10 resim; belge başı
+5 fiş); çakışan öğe Türkçe gerekçeyle başarısız olur ve çöpte kalır, diğerleri geri alınır. Çöpteki dosya kalıcı silinene kadar
+kotaya sayılır; `Storage:TrashDays` (7) gün sonra günlük iş kalıcı siler. Kaydı olmayan dosyalar (günlük süpürme, 30 günlük silinmiş
+görev) çöpte görünür ama geri alınamaz (`restorable: false`). Her temizlik, geri alma ve kalıcı silme denetim kaydına (`native_audit_log`,
+`entity = storage`) yalnız sayı ve baytla yazılır.
+
+| Uç | Gövde / yanıt |
+|---|---|
+| `GET /api/v1/storage/trash?page=` | `{ page, pageSize (50), total, totalBytes, trashDays, items: [{ id, area, kind, label, sizeBytes, fileCount, source, trashedAtMs, trashedByName?, daysLeft, restorable, thumbUrl? }] }` en yeni önce. `kind` `product_image\|catalog_image\|banner\|banner_image\|task_attachment\|expense_attachment\|files`; `source` `user\|cleanup\|sweep\|owner_deleted`; `daysLeft` kalıcı silinmeye kalan gün (7…1, süresi dolmuşsa 0); `thumbUrl` küçük boyut — herkese açık dosyada CDN adresi, özel dosyada `Storage:PresignMinutes` dakikalık imzalı adres |
+| `POST /api/v1/storage/trash/restore` | `{ ids }` (1–50). `{ restored, restoredBytes, failed, items: [{ id, label, restored, reason? }] }`. Gerekçe örnekleri: "Ürünün fotoğraf sınırı (8) dolu…", "Ürünün aynı fotoğrafı zaten var.", "Görev silinmiş; resmi geri alınamaz.", "Banner silinmiş; görseli geri alınamaz.", "Dosyalar kalıcı silinmiş; geri alınamaz.", "Bu dosyaların kaydı silinmiş; geri alınamaz…". `400 INVALID_BODY`, `503 STORAGE_UNAVAILABLE` |
+| `POST /api/v1/storage/trash/purge` | `{ ids }` ya da `{ all: true }` (çöpü boşalt; öğesiz eski çöp dosyaları da). `{ purged, purgedBytes, failed }` — yer hemen açılır; R2'nin yanıt vermediği öğe kalır, günlük iş yeniden dener |
+| `GET /api/v1/storage/cleanup/summary?days=` | `{ days, groups: [{ group, label, count, bytes, purgesDirectly }] }` — sıra `missing_products`, `out_of_stock`, `closed_tasks`, `ended_banners`, `xml_unused`; `days` kapanmış görev yaşı (varsayılan 90) |
+| `GET /api/v1/storage/cleanup/candidates?group=&page=&days=` | `{ group, label, page, pageSize (50), total, totalBytes, items: [{ id, kind, label, area, sizeBytes, thumbUrl?, extra? }] }` büyükten küçüğe; `id` sahibin kimliği; bilinmeyen grup `400 INVALID_CLEANUP_GROUP` |
+| `POST /api/v1/storage/cleanup` | `{ group, ids?, all?, days? }` → `{ group, trashedCount, trashedBytes, purgedCount, purgedBytes, remaining, message }`. Her kimlik grubun **o anki** adaylarıyla yeniden denetlenir (grup dışı kimliğe dokunulmaz). İstek başı en çok 500 sahip; kalan `remaining`. XML görselleri çöpe gitmez, kalıcı silinir (XML'den yeniden indirilebilir) |
+
+Gruplar: `missing_products` — stok kodu firmanın ürünlerinde olmayan ürün fotoğrafı, katalog görseli ve XML görseli (firmanın hiç ürünü
+yoksa grup boştur; "her şey kayıp" sayılmaz); `out_of_stock` — şu an stokta olmayan ürünlerin fotoğrafı ve katalog görseli;
+`closed_tasks` — `days` günden önce tamamlanmış (`CompletedAtMs`) ya da iptal edilmiş (son değişiklik zamanı) silinmemiş görevlerin
+resimleri; `ended_banners` — kapalı ya da bitiş tarihi geçmiş bannerlar ve görselleri (görseli başka bir banner da gösteriyorsa aday değildir);
+`xml_unused` — XML modülü kaldırılmış, XML ayarı silinmiş ya da görsel indirme kapalı firmanın bütün XML görselleri.
+
+**Karantina (T4)** — firma pasifleşince bütün herkese açık dosyaları, müşteri kataloğu modülü kaldırılınca yalnız `catalog`/`banner`
+dosyaları özel kovaya `{FIRMAKODU}/_karantina/{özgün anahtar}` altına taşınır (kopyala → defter → sil; defterde `QuarantinedFromKey`);
+firma ya da modül yeniden açılınca geri taşınır. Admin `PATCH /api/v1/admin/tenants/{id}` (`isActive`) ve `PUT …/mobile/modules`
+dakika içinde bir denetim ister; ayrıca her gün bütün firmalar denetlenir. Haftada bir (pazar, günlük işin ardından) R2 listelenir:
+defterde olmayan, 24 saatten eski ve ilk klasörü bir firma kodu olan nesneler silinir (en çok 1000); bilinmeyen nesneler listenin %30'unu
+ya da 2000'i geçerse hiçbir şey silinmez.
 
 Yeni hata kodları:
 - `413 STORAGE_QUOTA_EXCEEDED` — `{ errorCode, message, traceId, usedBytes, quotaBytes }`. Telefon metni: "Firmanızın depolama

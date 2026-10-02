@@ -363,6 +363,10 @@ public partial class Program
         });
         builder.Services.AddScoped<ErpBridge.CentralApi.Storage.FileStore>();
         builder.Services.AddScoped<ErpBridge.CentralApi.Storage.StorageMaintenance>();
+        // Trash, clean-up and quarantine (S9).
+        builder.Services.AddScoped<ErpBridge.CentralApi.Storage.StorageTrash>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.Storage.StorageCleanup>();
+        builder.Services.AddScoped<ErpBridge.CentralApi.Storage.StorageQuarantine>();
         builder.Services.AddHostedService<ErpBridge.CentralApi.Storage.StorageMaintenanceWorker>();
         // XML picture sync (S7): the server's only outside downloads, through a handler that pins every connection to a
         // checked public address and follows no redirect by itself (SafeHttpFetcher follows and re-checks them).
@@ -986,6 +990,7 @@ public partial class Program
         app.MapPortalExpenseReceiptEndpoints();
         app.MapProductImageEndpoints();
         app.MapXmlImageEndpoints();
+        app.MapStorageCleanupEndpoints();
         app.MapAdminStorageEndpoints();
     }
 

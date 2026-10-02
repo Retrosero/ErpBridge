@@ -162,13 +162,23 @@ CentralApi tarafından yönetilen multi-tenant veri modeli:
     `(TenantId, AccountId, SubmittedAtMs)`, `(TenantId, DocumentRef)`.
 - **Merkezi dosya deposu** *(GOAL_DEPOLAMA_R2 S1, migration `MerkeziDepolama`; kural 37)*:
   - `tenant_storage`: PK `TenantId` (FK `tenants` cascade), `QuotaBytes` null = `Storage:DefaultQuotaBytes` (5 GB), `UsedBytes` (etkin
-    ve çöpteki dosyalar; dosya kalıcı silinince düşer), `ReservedBytes` (süren yüklemeler), `RecountedAtMs`, `UpdatedAtMs`. İlk yüklemede ya da Admin kota
-    girişinde oluşur. Yükleme tek koşullu `UPDATE` ile yer ayırır (`Used + Reserved + boyut ≤ kota`).
+    ve çöpteki dosyalar; dosya kalıcı silinince düşer), `ReservedBytes` (süren yüklemeler), `RecountedAtMs`, `UpdatedAtMs`,
+    `QuarantineRequestedAtMs?` *(S9, migration `DepolamaTemizlik`)* (Admin firmayı açıp kapadı ya da modül değişti: bakım işi dakika içinde
+    karantina denetimi yapar). İlk yüklemede ya da Admin kota girişinde oluşur. Yükleme tek koşullu `UPDATE` ile yer ayırır (`Used + Reserved + boyut ≤ kota`).
   - `stored_files`: `Id` uuid (tahmin edilemez, nesne anahtarında), `TenantId` (cascade), `Area(16)` product|xml|catalog|banner|task|expense|vehicle,
     `Bucket(8)` public|private (alandan gelir), `ObjectKey(512)` `{FIRMAKODU}/{alan}/{yyyy}/{MM}/{id:N}-{varyant}.{uzantı}`, `Variant(1)` s|l|o,
     `ContentType(32)`, `SizeBytes`, `Sha256(64)`, `OwnerType(32)` + `OwnerKey(128)` (dosyanın bağlı olduğu kayıt), `Status(16)`
-    active|trashed|purging, `CreatedAtMs`, `CreatedByUserId?`, `TrashedAtMs?`, `TrashedByUserId?`. İndeks `(TenantId, Area, Status)`,
-    `(TenantId, OwnerType, OwnerKey)`, UNIQUE `(Bucket, ObjectKey)`. Yalnız `Storage/FileStore` yazar.
+    active|trashed|purging, `CreatedAtMs`, `CreatedByUserId?`, `TrashedAtMs?`, `TrashedByUserId?`, `QuarantinedFromKey(512)?` *(S9)* (karantinadaki
+    dosyanın herkese açık kovadaki özgün anahtarı; doluysa dosya özel kovada `{FIRMAKODU}/_karantina/{özgün anahtar}` altındadır). İndeks `(TenantId, Area, Status)`,
+    `(TenantId, OwnerType, OwnerKey)`, UNIQUE `(Bucket, ObjectKey)`. `Storage/FileStore` yazar; karantina taşıması (`Storage/StorageQuarantine`) yalnız
+    `Bucket`/`ObjectKey`/`QuarantinedFromKey`'i değiştirir.
+  - `storage_trash_items` *(S9, migration `DepolamaTemizlik`)*: çöp kutusundaki bir silme. `Id` uuid, `TenantId` (cascade), `Area(16)`, `Kind(32)`
+    product_image|catalog_image|banner|banner_image|task_attachment|expense_attachment|files, `Label(200)` (stok kodu, banner başlığı, görev başlığı,
+    belge kimliği), `SizeBytes` (silme anındaki dosyalar), `SnapshotJson?` (geri alma için sahip satırının JSON'u ya da yumuşak silinen satırın kimliği;
+    null = geri alınamaz), `Source(16)` user|cleanup|sweep|owner_deleted, `TrashedAtMs`, `TrashedByUserId?`. İndeks `(TenantId, TrashedAtMs)`,
+    `(TrashedAtMs)`. Sahibin silindiği işlemde yazılır; geri alınınca ya da dosyaları kalıcı silinince silinir.
+  - `storage_trash_item_files` *(S9)*: PK `(ItemId, FileId)`; `ItemId` FK `storage_trash_items` cascade, `FileId` (FK yok). İndeks `(FileId)` (süpürme bir
+    dosyaya ikinci öğe açmaz; günlük iş öğesiz çöp dosyalarını ayırır).
   - `expense_attachments` *(S5, migration `DepolamaAlanlari`)*: `Id` uuid (telefon üretir), `TenantId` (cascade), `DocumentExternalId(128)`
     telefonun belge kimliği (`jobs.ExternalId`; FK yok, belge sonra gelebilir), `Kind(24)` expense|vehicle_maintenance, `StoredFileId` (FK yok),
     `ContentType(32)`, `SizeBytes`, `CreatedAtMs`, `CreatedByUserId`, `CreatedByName(120)`, `IsDeleted`, `DeletedAtMs?`. İndeks

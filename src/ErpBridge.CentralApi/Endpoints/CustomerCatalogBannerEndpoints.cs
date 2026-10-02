@@ -107,7 +107,13 @@ public static class CustomerCatalogBannerEndpoints
             if (await ImageErrorAsync(db, tenantId, fields!.ImageId, ct) is { } imageError) return imageError;
             var oldImage = banner.ImageId;
             Apply(banner, fields, access.User!.Id, now);
-            if (oldImage is { } old && old != banner.ImageId) dropped.AddRange(await DropImageIfUnusedAsync(db, tenantId, old, id, ct));
+            if (oldImage is { } old && old != banner.ImageId && await DropImageIfUnusedAsync(db, tenantId, old, id, ct) is { } image)
+            {
+                dropped.AddRange(CatalogImages.StoredFileIds(image));
+                await StorageTrash.AddAsync(db, tenantId, StorageAreas.Banner, StorageTrashKinds.BannerImage, BannerLabel(banner) + " (eski görsel)",
+                    CatalogImages.StoredFileIds(image), StorageTrash.Snapshot(new StorageTrash.BannerRef(null, image, banner.Id)), StorageTrashSources.User,
+                    access.User!.Id, now, ct);
+            }
             return null;
         }, ct, pictures: true);
         if (error is not null) return error;
@@ -123,13 +129,12 @@ public static class CustomerCatalogBannerEndpoints
         if (access.Error is not null) return access.Error;
         var tenantId = access.Tenant!.Id;
         var dropped = new List<Guid>();
-        var (_, error) = await WriteLayoutAsync(db, tenantId, access.User!.Id, expected: null, async _ =>
+        var (_, error) = await WriteLayoutAsync(db, tenantId, access.User!.Id, expected: null, async now =>
         {
             dropped.Clear();
             var banner = await db.CatalogBanners.FirstOrDefaultAsync(b => b.Id == id && b.TenantId == tenantId, ct);
             if (banner is null) return BannerNotFound();
-            db.CatalogBanners.Remove(banner);
-            if (banner.ImageId is { } image) dropped.AddRange(await DropImageIfUnusedAsync(db, tenantId, image, id, ct));
+            dropped.AddRange(await RemoveAsync(db, banner, StorageTrashSources.User, access.User!.Id, now, ct));
             return null;
         }, ct, pictures: true);
         if (error is not null) return error;
@@ -284,17 +289,34 @@ public static class CustomerCatalogBannerEndpoints
             : null;
 
     /// <summary>
-    /// A banner picture no other banner shows is deleted with its old sizes (<c>catalog_image_blobs</c> cascade); its
-    /// stored files are returned for the caller to trash after its commit.
+    /// A banner picture no other banner shows is deleted with its old sizes (<c>catalog_image_blobs</c> cascade); the removed
+    /// picture is returned, its stored files for the caller to trash after its commit.
     /// </summary>
-    private static async Task<List<Guid>> DropImageIfUnusedAsync(CentralApiDbContext db, Guid tenantId, Guid imageId, Guid bannerId, CancellationToken ct)
+    private static async Task<CatalogImage?> DropImageIfUnusedAsync(CentralApiDbContext db, Guid tenantId, Guid imageId, Guid bannerId, CancellationToken ct)
     {
-        if (await db.CatalogBanners.AnyAsync(b => b.TenantId == tenantId && b.Id != bannerId && b.ImageId == imageId, ct)) return [];
+        if (await db.CatalogBanners.AnyAsync(b => b.TenantId == tenantId && b.Id != bannerId && b.ImageId == imageId, ct)) return null;
         var image = await db.CatalogImages.FirstOrDefaultAsync(i => i.Id == imageId && i.TenantId == tenantId && i.StockCode == CatalogBanners.ImageStockCode, ct);
-        if (image is null) return [];
+        if (image is null) return null;
         db.CatalogImages.Remove(image);
-        return [.. CatalogImages.StoredFileIds(image)];
+        return image;
     }
+
+    /// <summary>
+    /// Removes a tracked banner and its picture (unless another banner shows it) with a trash item that can bring both back
+    /// (S9; a user's delete or the clean-up's "ended banners"). Returns the stored files to trash after the commit.
+    /// </summary>
+    internal static async Task<List<Guid>> RemoveAsync(CentralApiDbContext db, CatalogBanner banner, string source, Guid? userId, long now, CancellationToken ct)
+    {
+        db.CatalogBanners.Remove(banner);
+        if (banner.ImageId is not { } imageId || await DropImageIfUnusedAsync(db, banner.TenantId, imageId, banner.Id, ct) is not { } image) return [];
+        var files = CatalogImages.StoredFileIds(image).ToList();
+        await StorageTrash.AddAsync(db, banner.TenantId, StorageAreas.Banner, StorageTrashKinds.Banner, BannerLabel(banner), files,
+            StorageTrash.Snapshot(new StorageTrash.BannerRef(banner, image, null)), source, userId, now, ct);
+        return files;
+    }
+
+    /// <summary>What the trash shows for a banner: its title, else that it had none.</summary>
+    internal static string BannerLabel(CatalogBanner banner) => banner.Title.Length > 0 ? "Banner: " + banner.Title : "Başlıksız banner";
 
     /// <summary>The banners' pictures and the CDN addresses of their stored sizes.</summary>
     private sealed record BannerImages(IReadOnlyDictionary<Guid, CatalogImage> Rows, CatalogFileUrls Urls);

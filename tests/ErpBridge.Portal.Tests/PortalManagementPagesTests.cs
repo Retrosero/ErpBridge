@@ -385,6 +385,20 @@ public sealed class PortalManagementPagesTests : PortalPageTestContext
     }
 
     [Fact]
+    public void The_seats_card_has_a_small_storage_summary_beside_it_when_the_server_gives_one()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        api.Answer("/api/v1/android/account/users", UserList());
+        api.Answer("/api/v1/storage/usage", new { available = true, usedBytes = 4L << 30, quotaBytes = 5L << 30, freeBytes = 1L << 30, trashedBytes = 0L });
+
+        var cut = Render<Kullanicilar>();
+
+        cut.WaitForAssertion(() => cut.Find("#storage-summary-used").TextContent.Should().Be("4,0 GB / 5,0 GB"));
+        cut.Find("#storage-summary").GetAttribute("data-level").Should().Be("warn", "80 % is the yellow line");
+        cut.Find("#storage-summary-used").GetAttribute("href").Should().Be("depolama");
+    }
+
+    [Fact]
     public void Disabling_a_user_patches_them_and_shows_the_new_state()
     {
         var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());

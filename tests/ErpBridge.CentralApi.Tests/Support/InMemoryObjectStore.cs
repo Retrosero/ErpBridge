@@ -10,7 +10,7 @@ namespace ErpBridge.CentralApi.Tests.Support;
 /// </summary>
 public sealed class InMemoryObjectStore : IObjectStore
 {
-    private readonly ConcurrentDictionary<(string Bucket, string Key), (byte[] Data, string ContentType)> _objects = new();
+    private readonly ConcurrentDictionary<(string Bucket, string Key), (byte[] Data, string ContentType, DateTimeOffset Modified)> _objects = new();
     private int _failPuts;
 
     public bool IsAvailable => true;
@@ -28,7 +28,7 @@ public sealed class InMemoryObjectStore : IObjectStore
     public Task PutAsync(string bucket, string key, byte[] data, string contentType, CancellationToken ct)
     {
         if (Interlocked.Decrement(ref _failPuts) >= 0) throw new StorageUnavailableException("simulated R2 outage");
-        _objects[(bucket, key)] = (data.ToArray(), contentType);
+        _objects[(bucket, key)] = (data.ToArray(), contentType, DateTimeOffset.UtcNow);
         return Task.CompletedTask;
     }
 
@@ -43,13 +43,16 @@ public sealed class InMemoryObjectStore : IObjectStore
     }
 
     public Task<StoredObjectInfo?> HeadAsync(string bucket, string key, CancellationToken ct) =>
-        Task.FromResult(_objects.TryGetValue((bucket, key), out var item) ? new StoredObjectInfo(key, item.Data.Length, item.ContentType, null) : null);
+        Task.FromResult(_objects.TryGetValue((bucket, key), out var item) ? new StoredObjectInfo(key, item.Data.Length, item.ContentType, item.Modified) : null);
+
+    /// <summary>Puts an object straight in (no failure switch), dated <paramref name="modified"/>: an orphan for the reconciliation.</summary>
+    public void Seed(string bucket, string key, byte[] data, DateTimeOffset modified) => _objects[(bucket, key)] = (data, "image/jpeg", modified);
 
     public async IAsyncEnumerable<StoredObjectInfo> ListAsync(string bucket, string prefix, [EnumeratorCancellation] CancellationToken ct)
     {
         await Task.CompletedTask;
         foreach (var ((b, key), item) in _objects)
-            if (b == bucket && key.StartsWith(prefix, StringComparison.Ordinal)) yield return new StoredObjectInfo(key, item.Data.Length, item.ContentType, null);
+            if (b == bucket && key.StartsWith(prefix, StringComparison.Ordinal)) yield return new StoredObjectInfo(key, item.Data.Length, item.ContentType, item.Modified);
     }
 
     public Task<Uri> PresignGetAsync(string bucket, string key, TimeSpan validFor, CancellationToken ct) =>

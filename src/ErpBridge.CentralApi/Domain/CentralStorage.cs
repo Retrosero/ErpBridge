@@ -24,6 +24,12 @@ public sealed class TenantStorage
     public long? RecountedAtMs { get; set; }
 
     public long UpdatedAtMs { get; set; }
+
+    /// <summary>
+    /// An immediate quarantine check is wanted (unix ms; GOAL_DEPOLAMA_R2 T4): the company was switched off or on, or its
+    /// catalog module changed. The maintenance worker looks every minute; null = nothing waiting.
+    /// </summary>
+    public long? QuarantineRequestedAtMs { get; set; }
 }
 
 /// <summary>
@@ -78,6 +84,93 @@ public sealed class StoredFile
     public long? TrashedAtMs { get; set; }
 
     public Guid? TrashedByUserId { get; set; }
+
+    /// <summary>
+    /// The key the object had in the public bucket while it is quarantined in the private one (T4: a closed company, or a
+    /// catalog picture of a company without the catalog module); null = not quarantined. The way back uses it.
+    /// </summary>
+    public string? QuarantinedFromKey { get; set; }
+}
+
+/// <summary>
+/// One deletion in the trash (GOAL_DEPOLAMA_R2 S9, table <c>storage_trash_items</c>): what a user or the clean-up removed —
+/// a product photo, a catalog picture, a banner, a task picture, a receipt — with its files (<see cref="StorageTrashItemFile"/>)
+/// and, when the owner record itself went, a snapshot to put it back. Restoring brings the record back with its files;
+/// after <c>Storage:TrashDays</c> the files are purged and the item goes. Written in the owner's own transaction.
+/// </summary>
+public sealed class StorageTrashItem
+{
+    public const int MaxLabelLength = 200;
+
+    public Guid Id { get; set; }
+
+    public Guid TenantId { get; set; }
+
+    /// <summary>One of <see cref="StorageAreas"/>: where the files were.</summary>
+    public string Area { get; set; } = string.Empty;
+
+    /// <summary>One of <see cref="StorageTrashKinds"/>: what the owner was, so a restore knows how to bring it back.</summary>
+    public string Kind { get; set; } = string.Empty;
+
+    /// <summary>What the panel shows: a stock code, a banner title, a task title, a document id.</summary>
+    public string Label { get; set; } = string.Empty;
+
+    /// <summary>The files' bytes together at the time of the delete.</summary>
+    public long SizeBytes { get; set; }
+
+    /// <summary>What a restore needs (the owner row as it was, or the soft-deleted row's id); null = cannot be restored.</summary>
+    public string? SnapshotJson { get; set; }
+
+    /// <summary>One of <see cref="StorageTrashSources"/>.</summary>
+    public string Source { get; set; } = StorageTrashSources.User;
+
+    public long TrashedAtMs { get; set; }
+
+    public Guid? TrashedByUserId { get; set; }
+
+    public List<StorageTrashItemFile> Files { get; set; } = [];
+}
+
+/// <summary>A file of a <see cref="StorageTrashItem"/> (table <c>storage_trash_item_files</c>); no foreign key to the ledger.</summary>
+public sealed class StorageTrashItemFile
+{
+    public Guid ItemId { get; set; }
+
+    public Guid FileId { get; set; }
+}
+
+/// <summary>Values of <see cref="StorageTrashItem.Kind"/>.</summary>
+public static class StorageTrashKinds
+{
+    public const string ProductImage = "product_image";
+    public const string CatalogImage = "catalog_image";
+
+    /// <summary>A deleted banner and its picture.</summary>
+    public const string Banner = "banner";
+
+    /// <summary>A banner's picture replaced by another in an edit; the banner stayed.</summary>
+    public const string BannerImage = "banner_image";
+    public const string TaskAttachment = "task_attachment";
+    public const string ExpenseAttachment = "expense_attachment";
+
+    /// <summary>Files without a record (the daily sweep, a deleted task 30 days on): nothing to bring back.</summary>
+    public const string Files = "files";
+}
+
+/// <summary>Values of <see cref="StorageTrashItem.Source"/>.</summary>
+public static class StorageTrashSources
+{
+    /// <summary>A user deleted it (phone or panel).</summary>
+    public const string User = "user";
+
+    /// <summary>The panel's "Alan aç".</summary>
+    public const string Cleanup = "cleanup";
+
+    /// <summary>The daily sweep of files no record points at.</summary>
+    public const string Sweep = "sweep";
+
+    /// <summary>The record they belonged to was deleted long ago (a deleted task's pictures, 30 days on).</summary>
+    public const string OwnerDeleted = "owner_deleted";
 }
 
 /// <summary>What a stored file is for; the area decides the bucket (T1).</summary>

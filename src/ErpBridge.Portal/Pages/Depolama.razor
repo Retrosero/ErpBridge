@@ -1,0 +1,445 @@
+@page "/depolama"
+@inherits PortalPageBase
+
+<PageTitle>Depolama — Yönetim Paneli</PageTitle>
+
+@* GOAL_DEPOLAMA_R2 P1: the company's one storage quota, "Alan aç" (clean-up groups the server computes), the trash and the
+   XML picture sync. Only who manages storage (action.storage.manage: ADMIN, MANAGER) reaches the page and its endpoints. *@
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Depolama" Eyebrow="Yönetim" Subtitle="Firmanın dosya alanı: kullanım, alan açma ve çöp kutusu" Busy="Busy" />
+
+    @if (_notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@_notice</MudAlert>
+    }
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_usage is { } usage)
+    {
+        var level = StorageText.Level(usage.UsedBytes, usage.QuotaBytes);
+        var percent = StorageText.Percent(usage.UsedBytes, usage.QuotaBytes);
+        <MudPaper Outlined="true" Class="panel storage-quota" id="storage-quota" data-level="@level">
+            <div class="panel-head">
+                <MudText Typo="Typo.h6">Kullanılan alan</MudText>
+                <span class="badge @(level switch { "full" => "badge--off", "warn" => "badge--warn", _ => "badge--ok" })" id="storage-percent">%@percent.ToString("N0", Fmt.Turkish) dolu</span>
+            </div>
+            <div class="progress-label">
+                <span>Ürün, XML, katalog, banner, görev ve fiş dosyalarının hepsi bu alanı paylaşır.</span>
+                <strong id="storage-used">@StorageText.Bytes(usage.UsedBytes) / @StorageText.Bytes(usage.QuotaBytes)</strong>
+            </div>
+            <MudProgressLinear Color="@(level switch { "full" => Color.Error, "warn" => Color.Warning, _ => Color.Primary })" Value="@percent" Rounded="true" Size="Size.Medium" />
+            <MudText Typo="Typo.caption" Class="text-muted panel-note" id="storage-trash-share">
+                Bunun @StorageText.Bytes(usage.TrashedBytes) kadarı çöp kutusunda; çöp boşaltılınca açılır.
+            </MudText>
+            @if (level == "full")
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Dense="true" Class="mt-3" id="storage-full">
+                    Depolama alanı dolmak üzere; yeni fotoğraf ve fişler yüklenemeyebilir. Aşağıdan alan açın ya da çöpü boşaltın.
+                </MudAlert>
+            }
+            else if (level == "warn")
+            {
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mt-3" id="storage-warn">
+                    Depolama alanının %@percent.ToString("N0", Fmt.Turkish)'i dolu. Kullanılmayan görselleri aşağıdan temizleyebilirsiniz.
+                </MudAlert>
+            }
+            @if (!usage.Available)
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="mt-3" id="storage-unavailable">
+                    Dosya deposu sunucuda henüz ayarlanmadı; şu an dosya yüklenemez.
+                </MudAlert>
+            }
+            <div class="storage-areas" id="storage-areas">
+                @foreach (var area in usage.Areas ?? [])
+                {
+                    <div class="storage-area" data-area="@area.Area">
+                        <span class="text-muted">@StorageText.AreaLabel(area.Area)</span>
+                        <strong>@StorageText.Bytes(area.UsedBytes)</strong>
+                        <span class="cell-sub">@area.FileCount.ToString("N0", Fmt.Turkish) dosya</span>
+                    </div>
+                }
+            </div>
+        </MudPaper>
+    }
+
+    @if (_summary is { } summary)
+    {
+        <MudPaper Outlined="true" Class="panel mt-3" id="storage-cleanup">
+            <div class="panel-head">
+                <div>
+                    <MudText Typo="Typo.h6">Alan aç</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted">
+                        Kullanılmayan görselleri seçip çöpe taşıyın; @TrashDays gün içinde çöp kutusundan geri alabilirsiniz. Yer, çöp boşaltılınca açılır.
+                    </MudText>
+                </div>
+            </div>
+            @foreach (var group in summary.Groups)
+            {
+                <div class="storage-group" data-group="@group.Group">
+                    <div class="storage-group-head">
+                        <div>
+                            <div class="cell-title">@group.Label</div>
+                            <div class="cell-sub group-size">
+                                @group.Count.ToString("N0", Fmt.Turkish) kayıt · @StorageText.Bytes(group.Bytes)@(group.PurgesDirectly ? " · kalıcı silinir" : null)
+                            </div>
+                        </div>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@(Busy || group.Count == 0)" OnClick="() => ToggleGroupAsync(group)" Class="group-toggle">
+                            @(_openGroup == group.Group ? "Kapat" : "Göster")
+                        </MudButton>
+                    </div>
+                    @if (_openGroup == group.Group && _candidates is { } list)
+                    {
+                        <label class="inline-field mt-2">
+                            <input type="checkbox" class="select-page" checked="@AllSelected(list.Items.Select(i => i.Id), _chosen)" disabled="@Busy"
+                                   @onchange="e => SelectPage(list.Items.Select(i => (i.Id, i.SizeBytes)), _chosen, e.Value is true)" />
+                            Bu sayfadakilerin hepsi
+                        </label>
+                        <div class="storage-list" id="cleanup-items">
+                            @foreach (var item in list.Items)
+                            {
+                                var selected = _chosen.ContainsKey(item.Id);
+                                <label class="storage-item @(selected ? "is-selected" : null)" data-candidate="@item.Id">
+                                    <input type="checkbox" checked="@selected" disabled="@Busy" @onchange="() => Toggle(_chosen, item.Id, item.SizeBytes)" />
+                                    @if (item.ThumbUrl is { } thumb)
+                                    {
+                                        <img class="storage-thumb" src="@thumb" alt="" loading="lazy" />
+                                    }
+                                    else
+                                    {
+                                        <span class="storage-thumb"><MudIcon Icon="@Icons.Material.Rounded.Image" /></span>
+                                    }
+                                    <span class="storage-item-text">
+                                        <span class="cell-title">@item.Label</span>
+                                        <span class="cell-sub">@StorageText.AreaLabel(item.Area) · @StorageText.Bytes(item.SizeBytes)</span>
+                                        @if (!string.IsNullOrEmpty(item.Extra))
+                                        {
+                                            <span class="cell-sub">@item.Extra</span>
+                                        }
+                                    </span>
+                                </label>
+                            }
+                        </div>
+                        @if (list.Total > list.PageSize)
+                        {
+                            <Pager Id="cleanup-pager" Page="list.Page" PageSize="list.PageSize" Total="list.Total" Busy="Busy" ShowSize="false" PageChanged="CandidatesPageAsync" />
+                        }
+                        <div class="storage-actions">
+                            <MudButton Variant="Variant.Filled" Color="Color.Warning" Disabled="@(Busy || _chosen.Count == 0)" OnClick="() => _cleanupAll = false" id="cleanup-selected">
+                                @(group.PurgesDirectly ? "Seçilenleri kalıcı sil" : "Seçilenleri çöpe taşı") (@_chosen.Count)
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" Disabled="@Busy" OnClick="() => _cleanupAll = true" id="cleanup-all">
+                                Grubun hepsi (@group.Count.ToString("N0", Fmt.Turkish))
+                            </MudButton>
+                        </div>
+                        @if (_cleanupAll is { } all)
+                        {
+                            <div class="order-confirm" id="cleanup-confirm-box">
+                                <span id="cleanup-confirm-text">@CleanupConfirmText(group, all)</span>
+                                <div class="form-actions">
+                                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => _cleanupAll = null" id="cleanup-cancel">Vazgeç</MudButton>
+                                    <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" Disabled="@Busy" OnClick="() => CleanupAsync(group, all)" id="cleanup-confirm">
+                                        @(group.PurgesDirectly ? "Kalıcı sil" : "Çöpe taşı")
+                                    </MudButton>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+        </MudPaper>
+    }
+
+    @if (_trash is { } trash)
+    {
+        <MudPaper Outlined="true" Class="panel mt-3" id="storage-trash">
+            <div class="panel-head">
+                <div>
+                    <MudText Typo="Typo.h6">Çöp kutusu</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted">
+                        Silinen ve temizlenen dosyalar burada @TrashDays gün bekler, sonra kendiliğinden kalıcı silinir. Çöpteki dosyalar kotaya sayılır.
+                    </MudText>
+                </div>
+                <span class="badge badge--muted" id="trash-total">@trash.Total.ToString("N0", Fmt.Turkish) kayıt · @StorageText.Bytes(trash.TotalBytes)</span>
+            </div>
+            @if (_restoreFailures.Count > 0)
+            {
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-3" id="restore-failures">
+                    Geri alınamayanlar:
+                    <ul class="storage-failures">
+                        @foreach (var failure in _restoreFailures)
+                        {
+                            <li data-failed="@failure.Id"><strong>@failure.Label</strong>: @failure.Reason</li>
+                        }
+                    </ul>
+                </MudAlert>
+            }
+            @if (trash.Items.Length == 0)
+            {
+                <EmptyState Id="trash-empty" Icon="@Icons.Material.Rounded.DeleteOutline" Title="Çöp kutusu boş."
+                            Hint="Telefondan ya da panelden silinen görseller ve fişler burada geri alınabilir." />
+            }
+            else
+            {
+                <label class="inline-field">
+                    <input type="checkbox" class="select-page" checked="@AllSelected(trash.Items.Select(i => i.Id), _trashChosen)" disabled="@Busy"
+                           @onchange="e => SelectPage(trash.Items.Select(i => (i.Id, i.SizeBytes)), _trashChosen, e.Value is true)" />
+                    Bu sayfadakilerin hepsi
+                </label>
+                <div class="storage-list" id="trash-items">
+                    @foreach (var item in trash.Items)
+                    {
+                        var selected = _trashChosen.ContainsKey(item.Id);
+                        <label class="storage-item @(selected ? "is-selected" : null)" data-trash="@item.Id">
+                            <input type="checkbox" checked="@selected" disabled="@Busy" @onchange="() => Toggle(_trashChosen, item.Id, item.SizeBytes)" />
+                            @if (item.ThumbUrl is { } thumb)
+                            {
+                                <img class="storage-thumb" src="@thumb" alt="" loading="lazy" />
+                            }
+                            else
+                            {
+                                <span class="storage-thumb"><MudIcon Icon="@Icons.Material.Rounded.Image" /></span>
+                            }
+                            <span class="storage-item-text">
+                                <span class="cell-title">@item.Label</span>
+                                <span class="cell-sub">@StorageText.AreaLabel(item.Area) · @StorageText.Bytes(item.SizeBytes) · @StorageText.SourceLabel(item.Source)</span>
+                                <span class="cell-sub days-left">@(item.DaysLeft > 0 ? $"{item.DaysLeft} gün kaldı" : "Bugün kalıcı silinecek")</span>
+                                <span class="cell-sub">@Fmt.Time(DateTimeOffset.FromUnixTimeMilliseconds(item.TrashedAtMs))@(item.TrashedByName is { } who ? " · " + who : null)</span>
+                                @if (!item.Restorable)
+                                {
+                                    <span class="badge badge--muted not-restorable">Geri alınamaz</span>
+                                }
+                            </span>
+                        </label>
+                    }
+                </div>
+                @if (trash.Total > trash.PageSize)
+                {
+                    <Pager Id="trash-pager" Page="trash.Page" PageSize="trash.PageSize" Total="trash.Total" Busy="Busy" ShowSize="false" PageChanged="TrashPageAsync" />
+                }
+                <div class="storage-actions">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(Busy || _trashChosen.Count == 0)" OnClick="RestoreAsync" id="trash-restore">
+                        Seçilenleri geri al (@_trashChosen.Count)
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@(Busy || _trashChosen.Count == 0)" OnClick="() => _trashConfirm = TrashConfirm.Selected" id="trash-purge">
+                        Kalıcı sil
+                    </MudButton>
+                    <MudButton Variant="Variant.Text" Color="Color.Error" Disabled="@Busy" OnClick="() => _trashConfirm = TrashConfirm.All" id="trash-empty-all">Çöpü boşalt</MudButton>
+                </div>
+                @if (_trashConfirm is { } confirm)
+                {
+                    <div class="order-confirm" id="trash-confirm-box">
+                        <span id="trash-confirm-text">@TrashConfirmText(trash, confirm)</span>
+                        <div class="form-actions">
+                            <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => _trashConfirm = null" id="trash-cancel">Vazgeç</MudButton>
+                            <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" Disabled="@Busy" OnClick="() => PurgeAsync(confirm)" id="trash-confirm">Kalıcı sil</MudButton>
+                        </div>
+                    </div>
+                }
+            }
+        </MudPaper>
+    }
+
+    @if (_xml is { ModuleEnabled: true } xml)
+    {
+        <MudPaper Outlined="true" Class="panel mt-3" id="storage-xml">
+            <div class="panel-head">
+                <div>
+                    <MudText Typo="Typo.h6">XML görselleri</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted">Sunucu XML adresinizdeki ürün görsellerini günde bir kez kopyalar; değişenleri yeniler, kalkanları siler.</MudText>
+                </div>
+                <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@(Busy || !xml.Configured || !xml.DownloadImages || xml.RequestedAtMs is not null)" OnClick="SyncXmlAsync" id="xml-sync">
+                    Şimdi eşitle
+                </MudButton>
+            </div>
+            <div class="cell-title" id="xml-counts">
+                @xml.ImageCount.ToString("N0", Fmt.Turkish) görsel · @xml.ProductCount.ToString("N0", Fmt.Turkish) ürün · @StorageText.Bytes(xml.ImageBytes)
+            </div>
+            <div class="cell-sub" id="xml-state">@XmlState(xml)</div>
+            @if (!string.IsNullOrWhiteSpace(xml.Message))
+            {
+                <div class="cell-sub" id="xml-message">@xml.Message</div>
+            }
+            @if (!xml.Configured)
+            {
+                <div class="cell-sub" id="xml-hint">Önce telefondan XML adresini ve alan eşlemesini kaydedin.</div>
+            }
+            else if (!xml.DownloadImages)
+            {
+                <div class="cell-sub" id="xml-hint">XML ayarında görsel indirme kapalı; açılınca sunucu görselleri kopyalar.</div>
+            }
+        </MudPaper>
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Storage;
+
+    private enum TrashConfirm { Selected, All }
+
+    private StorageUsageDto? _usage;
+    private StorageCleanupSummaryDto? _summary;
+    private StorageTrashDto? _trash;
+    private XmlImageStatusDto? _xml;
+    private string? _notice;
+
+    private string? _openGroup;
+    private StorageCleanupCandidatesDto? _candidates;
+    private readonly Dictionary<Guid, long> _chosen = [];
+    private bool? _cleanupAll;
+
+    private readonly Dictionary<Guid, long> _trashChosen = [];
+    private TrashConfirm? _trashConfirm;
+    private List<StorageRestoreItemDto> _restoreFailures = [];
+
+    private int TrashDays => _trash is { TrashDays: > 0 } trash ? trash.TrashDays : 7;
+
+    protected override async Task LoadAsync()
+    {
+        _usage = await Api.StorageUsageAsync();
+        _summary = await Api.StorageCleanupSummaryAsync();
+        _trash = await Api.StorageTrashAsync(1);
+        _xml = await Api.XmlImageStatusAsync();
+    }
+
+    /// <summary>After a change: the figures, the groups and the trash read again; the open group closes.</summary>
+    private async Task ReloadAsync()
+    {
+        _usage = await Api.StorageUsageAsync();
+        _summary = await Api.StorageCleanupSummaryAsync();
+        _trash = await Api.StorageTrashAsync(_trash?.Page ?? 1);
+        if (_trash.Items.Length == 0 && _trash.Page > 1) _trash = await Api.StorageTrashAsync(1);
+        _trashChosen.Clear();
+        _trashConfirm = null;
+    }
+
+    // ---- Alan aç ---------------------------------------------------------------------------------
+
+    private Task ToggleGroupAsync(StorageCleanupGroupDto group) => RunAsync(async () =>
+    {
+        _notice = null;
+        _chosen.Clear();
+        _cleanupAll = null;
+        if (_openGroup == group.Group)
+        {
+            _openGroup = null;
+            _candidates = null;
+            return;
+        }
+        _candidates = await Api.StorageCleanupCandidatesAsync(group.Group, 1);
+        _openGroup = group.Group;
+    });
+
+    private Task CandidatesPageAsync(int page) => RunAsync(async () =>
+    {
+        if (_openGroup is { } group) _candidates = await Api.StorageCleanupCandidatesAsync(group, page);
+    });
+
+    private string CleanupConfirmText(StorageCleanupGroupDto group, bool all)
+    {
+        var count = all ? group.Count : _chosen.Count;
+        var bytes = StorageText.Bytes(all ? group.Bytes : _chosen.Values.Sum());
+        return group.PurgesDirectly
+            ? $"{count} XML görseli ({bytes}) kalıcı silinir; XML'den yeniden indirilebilir. Yer hemen açılır."
+            : $"{count} kayıt ({bytes}) çöpe taşınacak. {TrashDays} gün içinde çöp kutusundan geri alabilirsiniz; yer, çöp boşaltılınca açılır.";
+    }
+
+    private Task CleanupAsync(StorageCleanupGroupDto group, bool all) => RunAsync(async () =>
+    {
+        var result = await Api.StorageCleanupAsync(group.Group, all ? null : [.. _chosen.Keys]);
+        _notice = result.Message;
+        _chosen.Clear();
+        _cleanupAll = null;
+        _openGroup = null;
+        _candidates = null;
+        await ReloadAsync();
+    });
+
+    // ---- Çöp kutusu ------------------------------------------------------------------------------
+
+    private Task TrashPageAsync(int page) => RunAsync(async () =>
+    {
+        _trash = await Api.StorageTrashAsync(page);
+        _trashConfirm = null;
+    });
+
+    private Task RestoreAsync() => RunAsync(async () =>
+    {
+        _notice = null;
+        var result = await Api.RestoreTrashAsync([.. _trashChosen.Keys]);
+        _restoreFailures = [.. result.Items.Where(i => !i.Restored)];
+        _notice = result.Restored > 0 ? $"{result.Restored} kayıt geri alındı." : null;
+        await ReloadAsync();
+    });
+
+    private static string TrashConfirmText(StorageTrashDto trash, TrashConfirm confirm) => confirm == TrashConfirm.All
+        ? $"Çöpteki {trash.Total.ToString("N0", Fmt.Turkish)} kaydın hepsi kalıcı silinecek; geri alınamaz. {StorageText.Bytes(trash.TotalBytes)} yer hemen açılır."
+        : "Seçilen kayıtlar kalıcı silinecek; geri alınamaz. Yer hemen açılır.";
+
+    private Task PurgeAsync(TrashConfirm confirm) => RunAsync(async () =>
+    {
+        _notice = null;
+        _restoreFailures = [];
+        var result = await Api.PurgeTrashAsync(confirm == TrashConfirm.All ? null : [.. _trashChosen.Keys]);
+        _notice = $"{result.Purged} kayıt kalıcı silindi, {StorageText.Bytes(result.PurgedBytes)} yer açıldı."
+            + (result.Failed > 0 ? $" {result.Failed} kayıt şu an silinemedi; sonra yeniden denenecek." : null);
+        await ReloadAsync();
+    });
+
+    // ---- XML -------------------------------------------------------------------------------------
+
+    private Task SyncXmlAsync() => RunAsync(async () =>
+    {
+        _xml = await Api.RequestXmlImageSyncAsync();
+        _notice = "XML görsel eşitlemesi sıraya alındı; bir dakika içinde başlar.";
+    });
+
+    private static string XmlState(XmlImageStatusDto xml)
+    {
+        if (xml.RequestedAtMs is { } requested) return "Eşitleme sırada (" + Fmt.Time(DateTimeOffset.FromUnixTimeMilliseconds(requested)) + ").";
+        if (xml.FinishedAtMs is not { } finished) return "Henüz eşitlenmedi.";
+        var status = xml.Status switch
+        {
+            "ok" => "tamamlandı",
+            "partial" => "kısmen tamamlandı",
+            "quota" => "depolama alanı dolduğu için durdu",
+            "failed" => "başarısız",
+            _ => xml.Status ?? "bitti",
+        };
+        return $"Son eşitleme {status} ({Fmt.Time(DateTimeOffset.FromUnixTimeMilliseconds(finished))}).";
+    }
+
+    // ---- selection -------------------------------------------------------------------------------
+
+    private static void Toggle(Dictionary<Guid, long> chosen, Guid id, long size)
+    {
+        if (!chosen.Remove(id)) chosen[id] = size;
+    }
+
+    private static bool AllSelected(IEnumerable<Guid> ids, Dictionary<Guid, long> chosen)
+    {
+        var any = false;
+        foreach (var id in ids)
+        {
+            if (!chosen.ContainsKey(id)) return false;
+            any = true;
+        }
+        return any;
+    }
+
+    private static void SelectPage(IEnumerable<(Guid Id, long Size)> items, Dictionary<Guid, long> chosen, bool selected)
+    {
+        foreach (var (id, size) in items)
+        {
+            if (selected) chosen[id] = size;
+            else chosen.Remove(id);
+        }
+    }
+}
