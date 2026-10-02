@@ -1,6 +1,6 @@
 # Goal Durumu — Parametre Yönetimi
 
-Son güncelleme: 2026-09-18 (P4a)
+Son güncelleme: 2026-09-18 (P4f)
 Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 
 > **Her görevden sonra, o görevin PR'ı içinde güncellenir.** Oturum kapanırsa buradan devam edilir.
@@ -16,12 +16,12 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P1 — Merkez veri modeli ve API | 7 | 7 | ✅ |
 | P2 — Panel (Admin) parametre ekranı | 8 | 8 | ✅ |
 | P3 — Ajan: Mikro aynası ve Fora içe aktarımı | 6 | 3 | 🔄 |
-| P4 — Sipariş Cepte: öncelikli öbekler | 6 | 1 | 🔄 |
+| P4 — Sipariş Cepte: öncelikli öbekler | 6 | 3 | 🔄 |
 | P5 — Kalan `akilli` öbekleri | 8 | 0 | ⬜ |
 | P6 — Aktarım şablonları ve entegrasyonlar | 4 | 0 | ⬜ |
 | P7 — Kapanış | 3 | 0 | ⬜ |
 
-**Şu anki görev:** P4b — `Goster_AnaMenu_*` ana menü görünürlüğü
+**Şu anki görev:** P4d'nin `EvrakSeri_*` yarısı (iki depo birlikte) — kullanıcı onayı bekliyor
 
 ---
 
@@ -58,11 +58,11 @@ Görev listesi: [GOAL_PARAMETRE_YONETIMI.md](GOAL_PARAMETRE_YONETIMI.md)
 | P3e | Ayna fark raporu | ⬜ | — | |
 | P3f | ERP lookup beslemesi | ⬜ | — | |
 | P4a | Room tablosu + gömülü katalog + `ParameterProvider` | ✅ | Sipariş Cepte | **Sipariş Cepte deposunda** (ayrı depo, ayrı PR). Room `parameter_values` + migration **39→40**; yalnız **sapmalar** saklanıyor, 1.800 varsayılan **APK'ya gömülü** (`parameter_defaults.json`, ~126 KB) — Fora'nın mimarisinin aynısı (D14). Kazanım: kimsenin değiştirmediği ayar **ilk senkrondan önce, bağlantı hiç yokken** doğru cevabı veriyor ve her senkronda kullanıcı başına 1.800 satır inmiyor. Dosya elle yazılmıyor: `tools/parametre-varsayilanlari.py` ErpBridge kataloğundan üretiyor, `--kontrol` bayatlığı söylüyor; `Sifre` (D6) ve gölgelenen kayıtlar dışarıda. Erişim tek kapıdan: `ParameterProvider` (D15) — `bool/int/decimal/string/csvList`, efektif değer = sapma ?? varsayılan. **Kullanıcı başına** yükleniyor, cihaz başına değil: telefonu iki plasiyer paylaşabiliyor. Çekme `If-None-Match` ile koşullu (D9): ETag `sync_state`'te, çağrıların neredeyse hepsi **304**. Üç kural test edildi: yanıt **birleştirilmiyor değiştiriliyor** (yanıtta olmayan parametre varsayılanına dönmüş demek), **başarısız çekme saklananlara dokunmuyor** (kopuk bağlantı = plasiyerin rota ortasında yetkisini kaybetmesi olmamalı), **yazma olmadıysa ETag saklanmıyor** (yoksa sonraki çekme 304 alır ve telefon sessizce varsayılanlarda kalır). Senkron turuna ayrı bir `SyncTask` olarak bağlandı — değişiklik beslemesi ERP'nin değiştirdiği kayıtları taşıyor, bunlar ise panelde birinin değiştirdiği ayarlar. **İki tasarım testin zorlamasıyla düzeldi:** `ParameterDefaults` `org.json` yerine Moshi akışıyla, `ParameterSync` `android.util.Log` yerine enjekte edilen uyarıyla çalışıyor — gömülü bir dosyayı okuyan veri sınıfının Android çalışma zamanına ihtiyacı olmamalı. Bilgi bankasına `05_Fora_Parametreleri.md` eklendi. 15 test |
-| P4b | `Goster_AnaMenu_*` (43) | ⬜ | — | |
-| P4c | `Hak*` (71) | ⬜ | — | |
-| P4d | `EvrakSeri_*` (14) + `Default*` (37) | ⬜ | — | |
+| P4b | `Goster_AnaMenu_*` (43) | ✅ | Sipariş Cepte | `Goster_AnaMenu_*` (43) ana sayfadaki kısayolları yönetiyor. Eşleme birebir değil çünkü menüler birebir değil: Fora'da olup burada olmayanlar (Güne başla, ziyaret, konsinye) haritada yok; burada olup Fora'da olmayanlar (teklif, bekleyen satış, WMS depo, araçlar, rut planı) **görünür kalıyor**. **Kural: bir ekran ancak bir parametre açıkça öyle diyorsa gizleniyor** — eşleme yoksa, değer yoksa, hatta katalog o id'yi hiç tanımıyorsa (eski Fora sürümü) ekran duruyor; sessizliği "gizle" saymak kimsenin yapılandırmadığı bir şey yüzünden çalışan bir ekranı yok ederdi. İki ayrı kapı var ve ikisinden biri gizliyor: operatörün modül tercihi ve Fora. 7 test |
+| P4c | `Hak*` (71) | 🔄 | Sipariş Cepte | **71'in 2'si bağlı.** 71 `Hak*` adlandırıldı. **Asimetri korunuyor:** `canSee` bilinmeyen id'de **açık**, `canChange` **kapalı** — katalog da öyle diyor (35 değiştirme yetkisi varsayılan `0`, 35 görme/listeleme varsayılan `1`). Tek ortak fallback, eski bir Fora sürümünde ya hep görülen bilgiyi gizlerdi ya da fatura tarihini değiştirme yetkisini herkese verirdi. Okunamayan değer hiçbir yönde emir sayılmıyor. Bağlananlar: `HakGorme_CariBakiye` (yetkisiz **sıfır değil "gizli"** — yanlış sayı eksik sayıdan kötü) ve `HakGorme_CariEkstre` (Hareketler sekmesi). **Yol boyunca hata bulundu:** sekme satırı süzülmüş dizin gönderiyordu, içerik mutlak dizine bakıyor — ekstre gizliyken "Ürünler"e basmak tam da gizlenen ekranı açardı. 5 test | **Kalan 69 ekranlara bağlı değil**; her biri ekran ekran denetim istiyor ve yanlış bir eşleme ya plasiyerin ihtiyacı olan veriyi gizler ya da müşterinin kredi limitini görmemesi gerekene açar.
+| P4d | `EvrakSeri_*` (14) + `Default*` (37) | 🔄 | Sipariş Cepte | `DefaultKaynakDepoNo` → evrakta `warehouseNo`, **yalnız bilerek değiştirilmişse**. Ajan `phoneWarehouse ?? context.WarehouseNo` yapıyor; Fora'nın varsayılanını (`1`) koşulsuz göndermek, deposu 3 olan firmada stoku 1'den çıkarmaya başlardı — kimse ayara dokunmamışken. Okunamayan değer de gönderilmiyor. `priceListNo`'ya dokunulmadı: o zaten müşterinin fiyat grubundan geliyor. `EvrakSeri_*` (14) bu işte yok — ajanın bilmediği yeni alan, iki depo birlikte. 4 test | **`EvrakSeri_*` yarısı bekliyor.**
 | P4e | `SenkronizeEt_*` (44) | ⬜ | — | |
-| P4f | "Telefonda etkili" rozeti | ⬜ | — | |
+| P4f | "Telefonda etkili" rozeti | ✅ | [#137](https://github.com/Retrosero/ErpBridge/pull/137) | `ImplementedParameters`: telefonun gerçekten uyduğu 14 parametre listelenip tohumlamada `IsImplemented` olarak yazılıyor (D16). Bu düzeltme **kendi işimin yarattığı bir yanlışlığı** kapatıyor: P4b–P4d sonrası menü, bakiye, ekstre ve depo gerçekten çalışıyordu ama panel hâlâ hepsine "bu sürümde etkisiz" diyordu. Liste **elle tutuluyor ve öyle olmalı** — katalog Fora'dan üretiliyor ve bizim telefonumuzun ne yaptığını bilmiyor; hiçbir şey bunu türetemez. Her tohumlamada yeniden yazılıyor: sonraki sürümde bir özellik inince rozet veritabanına elle dokunmadan kapanıyor, ve elle "uygulanmış" yazılmış bir satır bunu iddia edemiyor — rozetin söyleyemeyeceği yalan tam olarak bu. 2 test |
 | P5a | `Stok*` + `Listeleme*` | ⬜ | — | |
 | P5b | `Sepet*` + `Evrak*` + `Siparis*` | ⬜ | — | |
 | P5c | `YeniCari*` (137) | ⬜ | — | |
