@@ -142,6 +142,22 @@ public sealed class TenantMobilePageTests : BunitContext
     }
 
     [Fact]
+    public void Choosing_the_change_feed_sends_the_sync_mode()
+    {
+        var api = Register(Overview(max: 3, users: [User("patron", "ADMIN")]));
+
+        var cut = Render<TenantMobile>(p => p.Add(x => x.TenantId, TenantId));
+        cut.WaitForAssertion(() => cut.Find("#sync-mode"));
+        cut.Find("#sync-mode").GetAttribute("value").Should().Be("tables");
+        cut.Find("#sync-mode-save").HasAttribute("disabled").Should().BeTrue("nothing changed yet");
+        cut.Find("#sync-mode").Change("feed");
+        cut.Find("#sync-mode-save").Click();
+
+        cut.WaitForAssertion(() => api.LastSyncModeBody.Should().NotBeNull());
+        api.LastSyncModeBody!.Value.GetProperty("syncMode").GetString().Should().Be("feed");
+    }
+
+    [Fact]
     public void Unticking_the_xml_module_switches_it_off()
     {
         var overview = Overview(max: 3, users: [User("patron", "ADMIN")]);
@@ -313,6 +329,7 @@ public sealed class TenantMobilePageTests : BunitContext
         public JsonElement? LastCreatedUserBody { get; private set; }
         public ApprovalRequestDto[] Approvals { get; set; } = [];
         public JsonElement? LastModulesBody { get; private set; }
+        public JsonElement? LastSyncModeBody { get; private set; }
         public TenantStorageDto? Storage { get; set; }
         public List<JsonElement> StorageBodies { get; } = new();
         public int Recounts { get; private set; }
@@ -330,6 +347,11 @@ public sealed class TenantMobilePageTests : BunitContext
             {
                 LastSubscriptionBody = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken)).RootElement.Clone();
                 return SubscriptionResponse?.Invoke() ?? Json(HttpStatusCode.OK, _overview.Subscriptions[0]);
+            }
+            if (request.Method == HttpMethod.Put && path == $"{mobileBase}/sync-mode")
+            {
+                LastSyncModeBody = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken)).RootElement.Clone();
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
             }
             if (request.Method == HttpMethod.Put && path == $"{mobileBase}/modules")
             {

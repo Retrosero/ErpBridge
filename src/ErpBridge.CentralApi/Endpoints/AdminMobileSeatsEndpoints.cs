@@ -34,6 +34,10 @@ public static class AdminMobileSeatsEndpoints
         group.MapDelete("/users/{userId:guid}", DeleteUserAsync).WithName("AdminMobileDeleteUser");
         group.MapPatch("/devices/{deviceId:guid}", UpdateDeviceAsync).WithName("AdminMobileUpdateDevice");
         group.MapPut("/data-source", SetDataSourceAsync).WithName("AdminMobileSetDataSource");
+        group.MapPut("/sync-mode", SetSyncModeAsync).WithName("AdminMobileSetSyncMode")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces<ApiError>(StatusCodes.Status400BadRequest)
+            .Produces<ApiError>(StatusCodes.Status404NotFound);
         group.MapPut("/modules", SetModulesAsync).WithName("AdminMobileSetModules")
             .Produces(StatusCodes.Status204NoContent)
             .Produces<ApiError>(StatusCodes.Status400BadRequest)
@@ -80,6 +84,7 @@ public static class AdminMobileSeatsEndpoints
             TenantId = tenant.Id,
             TenantCode = tenant.Code,
             DataSource = tenant.DataSource,
+            SyncMode = tenant.MobileSyncMode,
             ApprovalRules = MobileApprovalEndpoints.RulesDto(await ErpBridge.CentralApi.Approvals.ApprovalService.RulesAsync(db, tenantId, ct), viewer: null),
             Modules = await MobileXmlFeedEndpoints.ModulesAsync(db, tenantId, ct),
             Seats = await seats.GetUsageAsync(tenantId, ct),
@@ -207,6 +212,43 @@ public static class AdminMobileSeatsEndpoints
         tenant.DataSource = value!;
         await db.SaveChangesAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
+        return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Moves the company's phones between the per-table endpoints and the change feed. Unlike the
+    /// data source this touches no data, so it is never refused for what the tenant holds: both
+    /// paths serve the same products under the same primary barcode (<c>Sync/ProductBarcodes</c>).
+    /// Phones learn it from their session; the permission stamp changes with it, so a phone that
+    /// stays signed in re-reads <c>/me</c> at its next call.
+    /// </summary>
+    private static async Task<IResult> SetSyncModeAsync(Guid tenantId, [FromBody] SetSyncModeRequest? body, [FromServices] CentralApiDbContext db, CancellationToken ct)
+    {
+        var value = body?.SyncMode?.Trim().ToLowerInvariant();
+        if (!TenantMobileSyncModes.IsValid(value))
+            return JsonResults.Status(StatusCodes.Status400BadRequest, new ApiError { ErrorCode = "INVALID_SYNC_MODE", Message = "syncMode must be tables or feed." });
+        var tenant = await db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId, ct);
+        if (tenant is null) return TenantNotFound();
+        if (tenant.MobileSyncMode == value) return Results.NoContent();
+        // An ERP tenant's phones on the feed read only mobile_records; the table tasks stop.
+        // If the projection was never filled (no backfill, or only recent changes), a phone
+        // would see an empty catalogue and, on its first full walk, prune its own. Require
+        // the catalogue and the customer list to be projected first (POST
+        // /api/v1/admin/mobile-records/backfill).
+        if (value == TenantMobileSyncModes.Feed && tenant.DataSource != TenantDataSources.Native)
+        {
+            var projected = await db.MobileRecords.AsNoTracking()
+                .Where(r => r.TenantId == tenantId && !r.IsDeleted && (r.Entity == "stocks" || r.Entity == "customers"))
+                .Select(r => r.Entity).Distinct().CountAsync(ct);
+            if (projected < 2)
+                return JsonResults.Status(StatusCodes.Status409Conflict, new ApiError
+                {
+                    ErrorCode = "FEED_NOT_READY",
+                    Message = "The change feed has no products or customers for this tenant yet; run the mobile-records backfill first.",
+                });
+        }
+        tenant.MobileSyncMode = value!;
+        await db.SaveChangesAsync(ct);
         return Results.NoContent();
     }
 

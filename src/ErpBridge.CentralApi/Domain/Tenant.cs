@@ -42,6 +42,16 @@ public sealed class Tenant
     public string DataSource { get; set; } = TenantDataSources.Erp;
 
     /// <summary>
+    /// How the company's phones read their data: <see cref="TenantMobileSyncModes.Tables"/>
+    /// (the per-table <c>/sync/&lt;bölüm&gt;</c> endpoints, the default) or
+    /// <see cref="TenantMobileSyncModes.Feed"/> (the change feed, <c>POST /sync/pull</c>).
+    /// Independent of <see cref="DataSource"/>: an ERP tenant can be moved to the feed
+    /// while its documents still go to the ERP. Set by an operator; the phone reads it
+    /// from its session (<c>syncMode</c>).
+    /// </summary>
+    public string MobileSyncMode { get; set; } = TenantMobileSyncModes.Tables;
+
+    /// <summary>
     /// Bumped at the start of every native document transaction so a tenant's
     /// stock and balance updates are applied one document at a time.
     /// </summary>
@@ -59,4 +69,16 @@ public static class TenantDataSources
     public const string Native = "native";
 
     public static bool IsValid(string? value) => value is Erp or Native;
+}
+
+/// <summary>Values of <see cref="Tenant.MobileSyncMode"/>.</summary>
+public static class TenantMobileSyncModes
+{
+    /// <summary>Per-table sync endpoints (the default).</summary>
+    public const string Tables = "tables";
+
+    /// <summary>The change feed, <c>POST /api/v1/android/sync/pull</c>.</summary>
+    public const string Feed = "feed";
+
+    public static bool IsValid(string? value) => value is Tables or Feed;
 }

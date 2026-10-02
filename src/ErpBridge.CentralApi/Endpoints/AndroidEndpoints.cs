@@ -391,6 +391,11 @@ public static class AndroidEndpoints
 
             if (barcodesByStock.TryGetValue(stockCode, out var barcodes) && barcodes.Length > 0)
             {
+                // Deliberately still the stored order, not ProductBarcodes: every ERP phone
+                // reads this endpoint today and keys products by `barkod`, so reordering here
+                // would change some primary barcodes at deploy and duplicate those products on
+                // phones that do not yet drop the old row (KB 00 rule 12). Align it once that
+                // phone build is out.
                 mapped["barcodes"] = barcodes;
                 mapped["barkod"] = GetString(barcodes[0], "barcode") ?? string.Empty;
             }
