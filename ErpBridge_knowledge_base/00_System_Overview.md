@@ -1112,6 +1112,13 @@ registration ayrı bir composition projesine taşınır.
      panel oturumunda (`client=portal`) `module.tasks`'ı denetler (403 `TASKS_MODULE_DENIED`); telefon oturumu ve bildirim uçları
      değişmedi (telefonda anahtar `ServerEnforced=false` kalır). Resimler tarayıcıya token taşıyamadığı için devre üzerinden okunup
      `data:` adresiyle gösterilir; yükleme telefonun boyutuna küçültülür.
+     **Yeniden gönderim (Codex #253):** yanıtı kaybolan gönderim (ağ, zaman aşımı, 5xx — `TaskSend.IsUnknown`) aynı op'larla gider:
+     form (`TaskEditorForm.OpId`/`NewId`, seride de) ve eklenen alt görev/yorum (`_subtaskOp`/`_commentOp`) op ve nesne kimliğini
+     kesin yanıta kadar tutar; sunucu bilinen op'a `duplicate` der, ikinci görev/yorum açılmaz. Kesin yanıttan sonra (uygulandı
+     ya da reddedildi) yeni op kimliği alınır — uygulanmış op sonraki bir düzenlemeyi `duplicate` diye yutmasın. **Uzlaştırma:**
+     sayfa telefon gibi ara ara (`PortalRefreshTiming.TasksFullRead`, 5 dk) tam liste okur — artımlı okuma görünmez olan görevi
+     getirmez; açık görev görünmez olunca kapanır. Uzun yoklamanın ilk sürüm yanıtı da okutur (ilk okuma ile dinlemenin başı
+     arasındaki değişiklik kaybolmasın). Seri düzenlemede alt görev başlıkları düzenlenir (`TaskEditor.ShowSubtasks`).
    - **Tuzak — istemci kimlikli alt nesne:** var olan göreve `add_subtask` satırı yalnız `task.Subtasks.Add` ile eklenirse EF anahtarı dolu
      satırı var olan sanıp UPDATE dener (`DbUpdateConcurrencyException`). `TaskService.AddSubtaskAsync` satırı önce
      `Db.WorkTaskSubtasks.Add` ile ekler (2026-10-02, panel tarayıcı kontrolünde bulundu; telefonu da etkiliyordu).

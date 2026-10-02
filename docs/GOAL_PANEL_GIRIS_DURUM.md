@@ -47,6 +47,9 @@ Plan: [GOAL_PANEL_GIRIS.md](GOAL_PANEL_GIRIS.md) · Başlangıç: 2026-10-02
   artık `DbSet` üzerinden eklenir. Telefonun aynı işlemi de bundan etkileniyordu (yeni görevle birlikte gelen alt görevler değil,
   sonradan eklenenler). Test: `PortalTasksAccessRelationalTests.A_subtask_added_to_an_existing_task_is_saved`.
 
+- **Codex #253:** (P1) yanıtı kaybolan görev/seri/yorum/alt görev gönderimi aynı op ve nesne kimliğiyle tekrarlanıyor (ikinci görev
+  açılmıyor); (P2) görev sayfası 5 dakikada bir tam liste okuyup görünmez olan görevi düşürüyor; (P2) uzun yoklamanın ilk yanıtı
+  da okutuyor; (P2) seri düzenlemede alt görev başlıkları görünüyor ve gönderiliyor.
 - **Davranış değişikliği (P5e):** ERP'siz firmada panelden **yeni** belge girişi artık yalnız ADMIN'e değil telefonun `module.*`
   yetkisine bağlı (K3, GOAL_PANEL_ERPSIZ D4'ün giriş kısmının yerini alır): varsayılan rollerde yönetici de girer. Düzeltme/iptal,
   kart düzenleme ve sayım D4'teki gibi yalnız ADMIN. ERP'li firmada Cari ve Evraklar da artık giriş düğmesi gösterir (belge ERP'ye yazılır).
