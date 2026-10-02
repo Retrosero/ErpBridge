@@ -91,6 +91,13 @@ ilgili knowledge_base dosyasını da güncelle.
   CI yeşilken (Actions kredisi yoksa yerel `dotnet build` 0 uyarı + `dotnet test` yeşilken) `main`'e birleştirme, Coolify
   dağıtımı ve `/health/schema` kontrolü önceden onaylıdır (kullanıcı: "Push+PR+merge, Play hariç"). Play yüklemesi bu
   istisnanın dışındadır. Aynı yasaklar geçerli; Mikro'ya yazım yok.
+- **İstisna (2026-10-02):** aynı yetkiler `docs/GOAL_PANEL_GIRIS.md` (panelden satış · tahsilat · alış · iade · tediye ·
+  gider girişi + panelde Görevler; ERP'li ve ERP'siz firma) görevleri için de önceden onaylıdır (kullanıcı: "Evet, önceki
+  goal'lerle aynı"): dala push, PR, CI yeşilken (Actions kredisi yoksa yerel `dotnet build` 0 uyarı + `dotnet test`
+  yeşilken) `main`'e squash-merge, Coolify dağıtımı ve `/health/schema` kontrolü. Mikro test yazımı yalnız
+  **`MikroDB_V15_DEMO`**'ya. Aynı yasaklar geçerli: `--force` push (ve rebase sonrası `--force-with-lease`) yasak, CI
+  kırmızıyken merge yasak, `main`'e doğrudan push yasak, `MikroDB_V15_02` (canlı firma verisi) ve diğer müşteri Mikro
+  DB'lerine yazmak yasak, Play yüklemesi bu istisnanın dışındadır.
 
 ## 3. Test / build
 
