@@ -850,3 +850,23 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .product-photo img { width: 88px; height: 88px; object-fit: cover; border-radius: 8px; background: #f2f4f7; display: block; }
 .product-photo figcaption { display: flex; gap: 2px; }
 .product-photo-upload { cursor: pointer; }
+
+/* Depolama (GOAL_DEPOLAMA_R2 P1): quota bar, areas, "Alan aç" and the trash. */
+.storage-areas { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 16px; }
+.storage-area { border: 1px solid var(--line-soft); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.storage-area strong { font-size: 1rem; }
+.storage-group { border: 1px solid var(--line-soft); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+.storage-group-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.storage-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 12px; }
+.storage-item { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line-soft); border-radius: 10px; padding: 8px; background: #fff; }
+.storage-item.is-selected { border-color: var(--brand-600); background: var(--brand-50); }
+.storage-item input[type="checkbox"] { margin-top: 4px; }
+.storage-thumb { width: 56px; height: 56px; flex: 0 0 56px; border-radius: 8px; object-fit: cover; background: #f2f4f7; display: grid; place-items: center; color: #98a2b3; }
+.storage-item-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.storage-item-text .cell-title { overflow-wrap: anywhere; }
+.storage-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.storage-failures { margin: 8px 0 0; padding-left: 18px; }
+@media (max-width: 600px) {
+    .storage-list { grid-template-columns: 1fr; }
+    .storage-actions .mud-button-root { flex: 1 1 100%; }
+}

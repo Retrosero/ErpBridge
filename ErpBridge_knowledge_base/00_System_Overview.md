@@ -1705,8 +1705,8 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      kesiştirilir: `missing_products` (stok kodu `CatalogViewService` ürünlerinde olmayan ürün fotoğrafı + katalog görseli + XML görseli; **firmanın
      hiç ürünü yoksa boş**), `out_of_stock` (ürünün `InStock`'u yanlış; stok geçmişi tutulmadığı için plandaki "N gündür stoksuz" yerine
      "şu an stoksuz"), `closed_tasks` (`days`, varsayılan 90: `DONE` ise `CompletedAtMs`, `CANCELLED` ise iptalin ayrı zamanı olmadığından
-     `UpdatedAtMs`; silinmiş görevler zamanlayıcının), `ended_banners` (kapalı ya da bitişi geçmiş; görseli canlı bir banner da gösteriyorsa
-     aday değil), `xml_unused` (XML modülü yok, ayar silinmiş ya da `DownloadImages=false`). Aday boyutu yalnız etkin dosyalardan; hiç etkin dosyası
+     `UpdatedAtMs`; silinmiş görevler zamanlayıcının), `ended_banners` (kapalı ya da bitişi geçmiş; görseli başka bir banner da gösteriyorsa
+     aday değil — tek başına yer açmaz, öğesi de görseli tutamaz), `xml_unused` (XML modülü yok, ayar silinmiş ya da `DownloadImages=false`). Aday boyutu yalnız etkin dosyalardan; hiç etkin dosyası
      olmayan kayıt aday değildir. Ürün/katalog/banner/XML değişikliği katalog görsel kilidinde; görev resimleri `TaskService.TrashAttachmentsAsync`
      (kullanıcı silmesi gibi: `PHOTO_DELETED` olayı, değişim numarası, telefonlar düşürür). **XML görselleri çöpe gitmez**, kalıcı silinir (R6:
      XML yeniden üretir; yanıt mesajı bunu söyler). İstek başı en çok 500 sahip (`remaining`). Her temizlik/geri alma/kalıcı silme
@@ -1731,3 +1731,14 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      geri alma, XML'in kalıcı silinmesi, fiş geri alma, süpürme öğesi geri alınamaz, karantina gidiş-dönüş ve yalnız katalog alanları, denetim
      kaydı), `StorageReconcileRelationalTests` (eski yetim silinir, yabancı klasör ve genç nesne kalır, %30 üstü hiçbir şey silinmez).
      `InMemoryObjectStore` artık nesnenin yazılma zamanını tutar (`Seed` ile tarihli yetim).
+   - **Panel "Depolama" sayfası (P1)** `ErpBridge.Portal/Pages/Depolama.razor` (`/depolama`, menüde İşlemler > "Depolama"; `PortalArea.Storage` =
+     `action.storage.manage`, katalog gibi ADMIN + MANAGER'a kilitli — izin sözlüğü başka rolü açamaz): kota çubuğu ("3,2 GB / 5,0 GB",
+     `StorageText.Level`: %80'den sarı `warn`, %95'ten kırmızı `full`, uyarı metniyle), çöpün payı, alanlara göre dağılım (Ürün, XML, Katalog,
+     Banner, Görev, Gider, Araç); "Alan aç" grupları (sayı + boyut; açılınca sayfalı küçük resimli liste, tek tek ya da sayfanın hepsi
+     seçilir, "Seçilenleri çöpe taşı"/"Grubun hepsi" satır içi onayla; XML grubunda "kalıcı silinir, XML'den yeniden indirilebilir");
+     çöp kutusu (kalan gün, kim sildi, geri alınamaz rozeti; seçilenleri geri al — geri alınamayanlar gerekçesiyle listelenir; seçilenleri
+     kalıcı sil ve "Çöpü boşalt" onayla); XML modülü açıksa "XML görselleri" durumu ve "Şimdi eşitle". `PortalApiClient` `Storage*` yöntemleri,
+     modeller `Api/StorageModels.cs`. Kullanıcılar sayfasında koltuk kartının yanında küçük "Depolama" özeti (`GET /storage/usage`, hata
+     olursa gösterilmez); katalog yönetimindeki "Görsel kotası" S3'ten beri birleşik kotayı okur, rengi aynı 80/95 eşiklerine çekildi.
+     Testler Portal `PortalStoragePageTests` (eşikler, seçim + onay, XML uyarısı, geri alma hataları, çöpü boşaltma, XML eşitleme, menü ve
+     yetki), `PortalManagementPagesTests` (Kullanıcılar özeti), `PortalRolesTests`.

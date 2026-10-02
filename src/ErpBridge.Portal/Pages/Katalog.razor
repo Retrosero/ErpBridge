@@ -130,7 +130,7 @@ else
                     <span title="Firmanın bütün dosyaları (katalog, ürün, görev, fiş) bu kotayı paylaşır.">Görsel kotası (firma depolaması)</span>
                     <strong>@Bytes(settings.ImageQuota.UsedBytes) / @Bytes(settings.ImageQuota.LimitBytes)</strong>
                 </div>
-                <MudProgressLinear Color="@(QuotaPercent(settings) >= 90 ? Color.Error : Color.Primary)" Value="@QuotaPercent(settings)" Rounded="true" Size="Size.Medium" />
+                <MudProgressLinear Color="@(StorageText.Level(settings.ImageQuota.UsedBytes, settings.ImageQuota.LimitBytes) switch { "full" => Color.Error, "warn" => Color.Warning, _ => Color.Primary })" Value="@QuotaPercent(settings)" Rounded="true" Size="Size.Medium" />
             </div>
         </MudPaper>
     }

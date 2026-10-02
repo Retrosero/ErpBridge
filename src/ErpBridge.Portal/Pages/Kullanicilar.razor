@@ -189,6 +189,18 @@ else
                         </MudText>
                     </MudPaper>
 
+                    @if (_storage is { } storage)
+                    {
+                        var level = StorageText.Level(storage.UsedBytes, storage.QuotaBytes);
+                        <MudPaper Outlined="true" Class="panel" id="storage-summary" data-level="@level">
+                            <div class="panel-head">
+                                <MudText Typo="Typo.h6">Depolama</MudText>
+                                <a href="depolama" class="badge @(level switch { "full" => "badge--off", "warn" => "badge--warn", _ => "badge--ok" })" id="storage-summary-used">@StorageText.Bytes(storage.UsedBytes) / @StorageText.Bytes(storage.QuotaBytes)</a>
+                            </div>
+                            <MudProgressLinear Color="@(level switch { "full" => Color.Error, "warn" => Color.Warning, _ => Color.Primary })" Rounded="true" Size="Size.Medium" Value="@StorageText.Percent(storage.UsedBytes, storage.QuotaBytes)" />
+                        </MudPaper>
+                    }
+
                     <MudPaper Outlined="true" Class="panel" id="user-create">
                         <div class="panel-head">
                             <MudText Typo="Typo.h6">Yeni kullanıcı</MudText>
@@ -269,7 +281,27 @@ else
         IsErpCompany && Session.HasModule(PortalModules.CustomerCatalog) && user.IsActive && roles.Contains(PortalRoles.Sales)
         && string.IsNullOrWhiteSpace(user.SalespersonCode);
 
-    protected override async Task LoadAsync() => _list = await Api.UsersAsync();
+    protected override async Task LoadAsync()
+    {
+        _list = await Api.UsersAsync();
+        await LoadStorageAsync();
+    }
+
+    // GOAL_DEPOLAMA_R2 §5: a small storage summary beside the seats. A hint only: a failure leaves it out, never the page.
+    private StorageUsageDto? _storage;
+
+    private async Task LoadStorageAsync()
+    {
+        try
+        {
+            _storage = await Api.StorageUsageAsync();
+        }
+        catch (PortalApiException)
+        {
+            // hata-sessiz: the summary is a hint beside the seats; the users list is what the page is for.
+            _storage = null;
+        }
+    }
 
     private bool IsSelf(UserDto user) => string.Equals(user.Username, Session.Username, StringComparison.OrdinalIgnoreCase);
 

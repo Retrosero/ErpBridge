@@ -21,7 +21,8 @@ R2 API anahtarı değerlerini görmek/girmek (kullanıcı girer).
 | S8 | Kota/kullanım + Admin | ✅ | #237 | `GET /api/v1/storage/usage`, Admin kota kartı (0 GB dahil), günlük sayaç hesabı |
 | S9 | Temizlik + bakım işi | ✅ | bu PR | Çöp öğeleri + geri alma (sınırlarla), temizlik grupları, kalıcı silme, günlük çöp boşaltma, karantina (T4), haftalık R2 mutabakatı, denetim kaydı; migration `DepolamaTemizlik` |
 | S10 | Bytea → R2 göçü | ⬜ | | |
-| P1–P3 | Panel + Admin | ⬜ | | |
+| P1 | Panel Depolama sayfası | ✅ | bu PR | `/depolama` (kota çubuğu %80 sarı/%95 kırmızı, alan dağılımı, Alan aç, çöp kutusu, XML eşitleme); Kullanıcılar'da depolama özeti; katalog kota rengi 80/95 |
+| P2–P3 | Panel fiş/ürün fotoğrafı + Admin kartı | ⬜ | | İçeriğin çoğu S3/S5/S6/S8'de geldi (`/fisler`, Stok > Fotoğraflar, birleşik katalog kotası, Admin depolama kartı); ayrıca gözden geçirilecek |
 | A1–A4 | Telefon | ⬜ | | |
 | K1 | Bilgi bankası | ⬜ | | |
 

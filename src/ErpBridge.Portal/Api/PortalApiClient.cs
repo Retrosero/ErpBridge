@@ -140,6 +140,42 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<StoredFileLink> StoredFileLinkAsync(Guid fileId, CancellationToken ct = default) =>
         GetAsync<StoredFileLink>($"api/v1/storage/files/{fileId:D}/link", ct);
 
+    // ---- Depolama (GOAL_DEPOLAMA_R2 S9, P1) -------------------------------------------------------
+
+    private const string Storage = "api/v1/storage/";
+
+    /// <summary>The company's storage: used (trash included), quota, and by area for who manages storage.</summary>
+    public Task<StorageUsageDto> StorageUsageAsync(CancellationToken ct = default) =>
+        GetAsync<StorageUsageDto>(Storage + "usage", ct);
+
+    public Task<StorageTrashDto> StorageTrashAsync(int page, CancellationToken ct = default) =>
+        GetAsync<StorageTrashDto>(Storage + "trash" + Query(("page", page > 1 ? page.ToString(CultureInfo.InvariantCulture) : null)), ct);
+
+    /// <summary>Brings the items back; a conflict fails only that item (its reason is in the answer).</summary>
+    public Task<StorageRestoreResultDto> RestoreTrashAsync(IEnumerable<Guid> ids, CancellationToken ct = default) =>
+        SendAsync<StorageRestoreResultDto>(HttpMethod.Post, Storage + "trash/restore", new { ids = ids.ToArray() }, ct);
+
+    /// <summary>Deletes the items for good, or the whole trash when <paramref name="ids"/> is null.</summary>
+    public Task<StoragePurgeResultDto> PurgeTrashAsync(IEnumerable<Guid>? ids, CancellationToken ct = default) =>
+        SendAsync<StoragePurgeResultDto>(HttpMethod.Post, Storage + "trash/purge", ids is null ? (object)new { all = true } : new { ids = ids.ToArray() }, ct);
+
+    public Task<StorageCleanupSummaryDto> StorageCleanupSummaryAsync(CancellationToken ct = default) =>
+        GetAsync<StorageCleanupSummaryDto>(Storage + "cleanup/summary", ct);
+
+    public Task<StorageCleanupCandidatesDto> StorageCleanupCandidatesAsync(string group, int page, CancellationToken ct = default) =>
+        GetAsync<StorageCleanupCandidatesDto>(Storage + "cleanup/candidates" + Query(("group", group), ("page", page > 1 ? page.ToString(CultureInfo.InvariantCulture) : null)), ct);
+
+    /// <summary>Moves the chosen candidates of a group to the trash, or all of it when <paramref name="ids"/> is null.</summary>
+    public Task<StorageCleanupResultDto> StorageCleanupAsync(string group, IEnumerable<Guid>? ids, CancellationToken ct = default) =>
+        SendAsync<StorageCleanupResultDto>(HttpMethod.Post, Storage + "cleanup", ids is null ? (object)new { group, all = true } : new { group, ids = ids.ToArray() }, ct);
+
+    public Task<XmlImageStatusDto> XmlImageStatusAsync(CancellationToken ct = default) =>
+        GetAsync<XmlImageStatusDto>(Storage + "xml-images/status", ct);
+
+    /// <summary>Asks for an XML picture sync now; the server answers 202 with the status.</summary>
+    public Task<XmlImageStatusDto> RequestXmlImageSyncAsync(CancellationToken ct = default) =>
+        SendAsync<XmlImageStatusDto>(HttpMethod.Post, Storage + "xml-images/sync", null, ct);
+
     private const string ProductImages = "api/v1/storage/products/images";
 
     /// <summary>A product's own photos in order (GOAL_DEPOLAMA_R2 S6).</summary>
