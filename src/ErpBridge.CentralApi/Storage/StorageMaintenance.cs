@@ -1,4 +1,5 @@
 using ErpBridge.CentralApi.Data;
+using ErpBridge.CentralApi.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -40,7 +41,46 @@ public sealed class StorageMaintenance
                 _logger.LogError(ex, "Storage recount failed for tenant {TenantId}.", tenantId);
             }
         }
+        try
+        {
+            await TrashUnreferencedAsync(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Storage sweep of unreferenced files failed.");
+        }
         return drifted;
+    }
+
+    /// <summary>An upload stores its file before its record lands; a file younger than this may still be on its way.</summary>
+    public static readonly TimeSpan UnreferencedGrace = TimeSpan.FromDays(1);
+
+    /// <summary>
+    /// Moves to the trash every active file that no live record points at any more, older than <see cref="UnreferencedGrace"/>:
+    /// the record was deleted but trashing its file afterwards failed (<see cref="FileStore.TrashAllAsync"/> only logs), or
+    /// an upload's record never landed. Without this such a file stayed active — counted, and openable by its uploader.
+    /// XML pictures are the XML sync's own (S7) and are left alone. Returns how many files were trashed.
+    /// </summary>
+    public async Task<int> TrashUnreferencedAsync(long nowMs, CancellationToken ct)
+    {
+        var cutoff = nowMs - (long)UnreferencedGrace.TotalMilliseconds;
+        string[] owned = [StorageAreas.Catalog, StorageAreas.Banner, StorageAreas.Product, StorageAreas.Task, StorageAreas.Expense, StorageAreas.Vehicle];
+        var catalogSmall = _db.CatalogImages.Where(i => i.StoredFileSmallId != null).Select(i => i.StoredFileSmallId!.Value);
+        var catalogLarge = _db.CatalogImages.Where(i => i.StoredFileLargeId != null).Select(i => i.StoredFileLargeId!.Value);
+        var productSmall = _db.ProductImages.Select(i => i.StoredFileSmallId);
+        var productLarge = _db.ProductImages.Select(i => i.StoredFileLargeId);
+        var tasks = _db.WorkTaskAttachments.Where(a => !a.IsDeleted && a.StoredFileId != null).Select(a => a.StoredFileId!.Value);
+        var receipts = _db.ExpenseAttachments.Where(a => !a.IsDeleted).Select(a => a.StoredFileId);
+        var orphans = await _db.StoredFiles.AsNoTracking()
+            .Where(f => f.Status == StoredFileStatuses.Active && f.CreatedAtMs < cutoff && owned.Contains(f.Area))
+            .Where(f => !catalogSmall.Contains(f.Id) && !catalogLarge.Contains(f.Id) && !productSmall.Contains(f.Id) && !productLarge.Contains(f.Id)
+                && !tasks.Contains(f.Id) && !receipts.Contains(f.Id))
+            .Select(f => new { f.TenantId, f.Id })
+            .ToListAsync(ct);
+        foreach (var tenant in orphans.GroupBy(f => f.TenantId))
+            await _files.TrashAllAsync(tenant.Key, tenant.Select(f => f.Id), null, ct);
+        if (orphans.Count > 0) _logger.LogWarning("Storage sweep moved {Count} unreferenced files to the trash.", orphans.Count);
+        return orphans.Count;
     }
 }
 
