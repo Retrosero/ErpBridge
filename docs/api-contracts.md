@@ -668,7 +668,7 @@ görev) çöpte görünür ama geri alınamaz (`restorable: false`). Her temizli
 Gruplar: `missing_products` — stok kodu firmanın ürünlerinde olmayan ürün fotoğrafı, katalog görseli ve XML görseli (firmanın hiç ürünü
 yoksa grup boştur; "her şey kayıp" sayılmaz); `out_of_stock` — şu an stokta olmayan ürünlerin fotoğrafı ve katalog görseli;
 `closed_tasks` — `days` günden önce tamamlanmış (`CompletedAtMs`) ya da iptal edilmiş (son değişiklik zamanı) silinmemiş görevlerin
-resimleri; `ended_banners` — kapalı ya da bitiş tarihi geçmiş bannerlar ve görselleri (canlı bir banner'ın da gösterdiği görsel sayılmaz);
+resimleri; `ended_banners` — kapalı ya da bitiş tarihi geçmiş bannerlar ve görselleri (görseli başka bir banner da gösteriyorsa aday değildir);
 `xml_unused` — XML modülü kaldırılmış, XML ayarı silinmiş ya da görsel indirme kapalı firmanın bütün XML görselleri.
 
 **Karantina (T4)** — firma pasifleşince bütün herkese açık dosyaları, müşteri kataloğu modülü kaldırılınca yalnız `catalog`/`banner`

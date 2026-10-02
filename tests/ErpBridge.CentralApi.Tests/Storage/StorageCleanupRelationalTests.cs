@@ -205,6 +205,9 @@ public sealed class StorageCleanupRelationalTests : IClassFixture<StorageCentral
         var c = await CompanyAsync(_factory, withModule: true);
         var (endedId, endedImage) = await SeedBannerAsync(c, "Yaz kampanyası", active: true, endsAtMs: DateTimeOffset.UtcNow.AddDays(-2).ToUnixTimeMilliseconds());
         await SeedBannerAsync(c, "Canlı", active: true, endsAtMs: null);
+        // Two switched-off banners showing one picture: removing one could not be undone with its picture, so neither is offered.
+        var (_, sharedImage) = await SeedBannerAsync(c, "Ortak", active: false, endsAtMs: null);
+        await SeedAsync(_factory, db => db.CatalogBanners.Add(new CatalogBanner { Id = Guid.NewGuid(), TenantId = c.Id, Title = "Ortak 2", ImageId = sharedImage, IsActive = false }));
 
         var candidates = await OkAsync<StorageCleanupCandidatesResponse>(await SendAsync(_factory, HttpMethod.Get, Cleanup + "/candidates?group=ended_banners", c.Patron));
         candidates.Items.Should().ContainSingle().Which.Should().Match<StorageCleanupCandidateDto>(i => i.Id == endedId && i.Label == "Banner: Yaz kampanyası" && i.Extra!.StartsWith("Bitti"));

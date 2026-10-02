@@ -165,8 +165,9 @@ public sealed class StorageCleanup
         foreach (var banner in ended)
         {
             if (banner.ImageId is not { } imageId || !images.TryGetValue(imageId, out var image)) continue;
-            // A picture a live banner shows too stays; the banner alone frees nothing then.
-            if (banners.Any(b => b.Id != banner.Id && b.ImageId == imageId && !ended.Contains(b))) continue;
+            // A picture another banner shows too stays with it: the banner alone frees nothing, and removing it could not be
+            // undone (its trash item holds the picture).
+            if (banners.Any(b => b.Id != banner.Id && b.ImageId == imageId)) continue;
             result.Add(new Candidate(banner.Id, StorageTrashKinds.Banner, CustomerCatalogBannerEndpoints.BannerLabel(banner), StorageAreas.Banner, 0,
                 [.. CatalogImages.StoredFileIds(image)], image.StoredFileSmallId ?? image.StoredFileLargeId,
                 !banner.IsActive ? "Kapalı" : "Bitti " + Day(banner.EndsAtMs!.Value)));
