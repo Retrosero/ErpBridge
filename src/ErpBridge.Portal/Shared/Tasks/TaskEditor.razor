@@ -1,0 +1,101 @@
+@namespace ErpBridge.Portal.Shared.Tasks
+@* The task form (create and edit). Who may be assigned is the server's rule (GOAL_GOREVLER K3): a manager anyone, others
+   only themselves; followers anyone. *@
+
+<div class="stack-form" id="task-editor">
+    <label class="stack-field">
+        <span class="field-label">Başlık</span>
+        <input class="portal-input" id="task-title" maxlength="200" value="@Form.Title" disabled="@Busy" @onchange="e => Form.Title = e.Value?.ToString() ?? string.Empty" />
+    </label>
+    <label class="stack-field">
+        <span class="field-label">Açıklama</span>
+        <textarea class="portal-input" id="task-description-input" rows="3" maxlength="4000" disabled="@Busy" @onchange="e => Form.Description = e.Value?.ToString() ?? string.Empty">@Form.Description</textarea>
+    </label>
+    <div class="form-row document-form">
+        <label class="stack-field">
+            <span class="field-label">Öncelik</span>
+            <select class="portal-select" id="task-priority" value="@Form.Priority" disabled="@Busy" @onchange="e => Form.Priority = e.Value?.ToString() ?? DefaultPriority">
+                @foreach (var priority in TaskText.Priorities)
+                {
+                    <option value="@priority">@TaskText.Priority(priority)</option>
+                }
+            </select>
+        </label>
+        <label class="stack-field">
+            <span class="field-label">Başlangıç</span>
+            <input type="datetime-local" class="portal-input" id="task-start" value="@Form.Start" disabled="@Busy" @onchange="e => Form.Start = e.Value?.ToString() ?? string.Empty" />
+        </label>
+        <label class="stack-field">
+            <span class="field-label">Bitiş</span>
+            <input type="datetime-local" class="portal-input" id="task-due" value="@Form.Due" disabled="@Busy" @onchange="e => Form.Due = e.Value?.ToString() ?? string.Empty" />
+        </label>
+    </div>
+    <div class="form-row document-form">
+        <label class="stack-field">
+            <span class="field-label">Cari kodu</span>
+            <input class="portal-input" id="task-customer-code" maxlength="64" value="@Form.CustomerCode" disabled="@Busy" @onchange="e => Form.CustomerCode = e.Value?.ToString()" />
+        </label>
+        <label class="stack-field">
+            <span class="field-label">Cari adı</span>
+            <input class="portal-input" id="task-customer-name" maxlength="200" value="@Form.CustomerName" disabled="@Busy" @onchange="e => Form.CustomerName = e.Value?.ToString()" />
+        </label>
+    </div>
+    <label class="inline-field">
+        <input type="checkbox" id="task-visit-reminder" checked="@Form.VisitReminder" disabled="@(Busy || string.IsNullOrWhiteSpace(Form.CustomerCode))" @onchange="e => Form.VisitReminder = e.Value is true" />
+        Cari ziyaretinde hatırlat
+    </label>
+    <label class="inline-field">
+        <input type="checkbox" id="task-requires-photo" checked="@Form.RequiresPhoto" disabled="@Busy" @onchange="e => Form.RequiresPhoto = e.Value is true" />
+        Tamamlamak için fotoğraf gerekli
+    </label>
+
+    <span class="field-label">Atanan</span>
+    <div class="task-people" id="task-assignees" style="display: flex; flex-wrap: wrap; gap: 4px 16px">
+        @foreach (var person in People.Where(p => CanManage || p.Id == Me))
+        {
+            <label class="inline-field" data-person="@person.Id">
+                <input type="checkbox" checked="@Form.Assignees.Contains(person.Id)" disabled="@Busy" @onchange="e => Toggle(Form.Assignees, person.Id, e.Value is true)" />
+                @person.FullName
+            </label>
+        }
+    </div>
+    <span class="field-label">Takipçi</span>
+    <div class="task-people" id="task-followers" style="display: flex; flex-wrap: wrap; gap: 4px 16px">
+        @foreach (var person in People)
+        {
+            <label class="inline-field" data-person="@person.Id">
+                <input type="checkbox" checked="@Form.Followers.Contains(person.Id)" disabled="@Busy" @onchange="e => Toggle(Form.Followers, person.Id, e.Value is true)" />
+                @person.FullName
+            </label>
+        }
+    </div>
+
+    @if (ShowSubtasks ?? Form.TaskId is null)
+    {
+        <label class="stack-field">
+            <span class="field-label">Alt görevler (her satır bir alt görev)</span>
+            <textarea class="portal-input" id="task-subtask-lines" rows="3" disabled="@Busy" @onchange="e => Form.SubtaskLines = e.Value?.ToString() ?? string.Empty">@Form.SubtaskLines</textarea>
+        </label>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public TaskEditorForm Form { get; set; } = default!;
+    [Parameter] public IReadOnlyList<TaskPersonDto> People { get; set; } = [];
+    [Parameter] public bool CanManage { get; set; }
+    [Parameter] public Guid? Me { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    /// <summary>
+    /// Whether the subtask titles are edited here: by default only a new task's (an existing one's subtasks are edited on
+    /// it). A series always edits its titles — <c>update_series</c> replaces the list (Codex #253).
+    /// </summary>
+    [Parameter] public bool? ShowSubtasks { get; set; }
+
+    private const string DefaultPriority = "NORMAL";
+
+    private static void Toggle(HashSet<Guid> set, Guid id, bool on)
+    {
+        if (on) set.Add(id);
+        else set.Remove(id);
+    }
+}

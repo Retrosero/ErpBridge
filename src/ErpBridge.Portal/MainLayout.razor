@@ -22,6 +22,7 @@
                 <span class="portal-appbar-code">Firma kodu @Session.TenantCode</span>
             </div>
             <MudSpacer />
+            <NotificationBell />
             <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true" aria-label="Hesap menüsü">
                 @* MudBlazor 9: a custom activator opens the menu itself; the wrapper no longer listens for the click.
                    A real button so Enter and Space open it too. *@
@@ -127,6 +128,16 @@
                         {
                             <MudNavLink Href="stok/sayim" Icon="@Icons.Material.Rounded.Checklist" id="nav-stock-count">Stok sayımı</MudNavLink>
                         }
+                    </MudNavMenu>
+                }
+
+                @if (Session.Allows(PortalArea.Tasks))
+                {
+                    @* GOAL_PANEL_GIRIS P6: the phone's tasks, gated on module.tasks (the server checks it for a panel session too). *@
+                    <div class="portal-nav-label">Ekip</div>
+                    <MudNavMenu Class="portal-nav" Rounded="true" Margin="Margin.Dense">
+                        <MudNavLink Href="gorevler" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.TaskAlt" id="nav-tasks">Görevler</MudNavLink>
+                        <MudNavLink Href="gorevler/seriler" Icon="@Icons.Material.Rounded.EventRepeat" id="nav-task-series">Tekrarlayan görevler</MudNavLink>
                     </MudNavMenu>
                 }
 

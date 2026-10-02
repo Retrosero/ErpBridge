@@ -651,6 +651,68 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<EntryDocumentsResponse> EntryDocumentsAsync(bool everyone, int page, CancellationToken ct = default) =>
         GetAsync<EntryDocumentsResponse>(Entry + "documents" + Query(("all", everyone ? "true" : null), ("page", page.ToString(CultureInfo.InvariantCulture))), ct);
 
+    // ---- tasks and notifications (GOAL_PANEL_GIRIS P6) ----------------------
+
+    private const string Tasks = "api/v1/android/tasks";
+
+    /// <summary>One page of the tasks the user sees, changed after <paramref name="changedSinceSeq"/> (0 = all).</summary>
+    public Task<TaskListResponse> TasksAsync(long changedSinceSeq, CancellationToken ct = default) =>
+        GetAsync<TaskListResponse>(Tasks + Query(("changedSinceSeq", changedSinceSeq.ToString(CultureInfo.InvariantCulture)), ("take", "500")), ct);
+
+    public Task<TaskDetailDto> TaskAsync(Guid id, CancellationToken ct = default) => GetAsync<TaskDetailDto>($"{Tasks}/{id:D}", ct);
+
+    public Task<TaskSummaryDto> TaskSummaryAsync(CancellationToken ct = default) => GetAsync<TaskSummaryDto>(Tasks + "/summary", ct);
+
+    public Task<TaskPersonDto[]> TaskPeopleAsync(CancellationToken ct = default) => GetAsync<TaskPersonDto[]>(Tasks + "/people", ct);
+
+    public Task<TaskSeriesDto[]> TaskSeriesAsync(CancellationToken ct = default) => GetAsync<TaskSeriesDto[]>(Tasks + "/series", ct);
+
+    /// <summary>
+    /// The changes, applied in order; each op's own <c>opId</c> makes a resent batch apply once. A rejected op comes back
+    /// with its reason and the rest still apply.
+    /// </summary>
+    public Task<TaskOpsResponse> TaskOpsAsync(IReadOnlyList<TaskOp> ops, CancellationToken ct = default) =>
+        SendAsync<TaskOpsResponse>(HttpMethod.Post, Tasks + "/ops", new { ops }, ct);
+
+    /// <summary>Long-poll: a new version when tasks changed, null when <paramref name="waitSeconds"/> passed without one.</summary>
+    public async Task<long?> TaskEventsAsync(long? version, int waitSeconds, CancellationToken ct = default) =>
+        (await SendAsync<TaskEventsResponse?>(HttpMethod.Get, Tasks + "/events" + Query(
+            ("version", version?.ToString(CultureInfo.InvariantCulture)), ("wait", waitSeconds.ToString(CultureInfo.InvariantCulture))), null, ct, emptyOk: true))?.Version;
+
+    /// <summary>A picture's bytes and type; the browser cannot send the token, so the page shows them as a data address.</summary>
+    public async Task<(byte[] Content, string ContentType)> TaskAttachmentAsync(Guid taskId, Guid attachmentId, CancellationToken ct = default)
+    {
+        if (!session.IsSignedIn) throw new SessionEndedException("INVALID_TOKEN");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{Tasks}/{taskId:D}/attachments/{attachmentId:D}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", session.Token);
+        using var response = await http.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            var (code, message) = await ReadErrorWithMessageAsync(response, ct);
+            if (response.StatusCode == HttpStatusCode.Unauthorized || SessionEndingCodes.Contains(code)) throw new SessionEndedException(code);
+            throw new PortalApiException(code, (int)response.StatusCode, PortalMessages.Knows(code) ? null : PortalMessages.For(code, message));
+        }
+        return (await response.Content.ReadAsByteArrayAsync(ct), response.Content.Headers.ContentType?.MediaType ?? "image/jpeg");
+    }
+
+    /// <summary>A picture added to the task; its id makes a retried upload one picture.</summary>
+    public Task UploadTaskAttachmentAsync(Guid taskId, Guid attachmentId, byte[] content, string contentType, CancellationToken ct = default) =>
+        PutBytesAsync($"{Tasks}/{taskId:D}/attachments/{attachmentId:D}", content, contentType, ct);
+
+    public Task DeleteTaskAttachmentAsync(Guid taskId, Guid attachmentId, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Delete, $"{Tasks}/{taskId:D}/attachments/{attachmentId:D}", null, ct, emptyOk: true);
+
+    /// <summary>
+    /// The user's notifications after <paramref name="since"/>, oldest first, and the unread count (tasks and catalog requests
+    /// alike); page on with the answer's <c>latestSeq</c> while <c>hasMore</c>.
+    /// </summary>
+    public Task<UserNotificationListResponse> NotificationsAsync(long since, CancellationToken ct = default) =>
+        GetAsync<UserNotificationListResponse>("api/v1/android/notifications" + Query(
+            ("changedSinceSeq", since.ToString(CultureInfo.InvariantCulture)), ("take", "200")), ct);
+
+    public Task MarkNotificationsReadAsync(IReadOnlyList<Guid>? ids, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Post, "api/v1/android/notifications/read", new { ids, all = ids is null }, ct, emptyOk: true);
+
     // ---- plumbing ------------------------------------------------------------
 
     private Task<T> GetAsync<T>(string path, CancellationToken ct) => SendAsync<T>(HttpMethod.Get, path, null, ct);

@@ -1,0 +1,253 @@
+@page "/gorevler/seriler"
+@inherits PortalPageBase
+
+<PageTitle>Tekrarlayan görevler — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Tekrarlayan görevler" Eyebrow="Görevler" Subtitle="Günlük, haftalık ya da aylık kendiliğinden açılan görevler (saatler İstanbul)." Busy="Busy">
+        <Actions>
+            <MudButton Variant="Variant.Text" Size="Size.Small" Href="gorevler">Görevler</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@Busy" OnClick="() => Open(null)" id="series-new">Yeni tekrarlayan görev</MudButton>
+        </Actions>
+    </PageHeader>
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_series.Length == 0)
+    {
+        <EmptyState Title="Tekrarlayan görev yok" Hint="Örneğin her pazartesi 09:00'da açılan bir kontrol görevi tanımlayın." />
+    }
+    else
+    {
+        <MudPaper Outlined="true" Class="panel panel--table">
+            <div class="table-scroll">
+                <table class="data-table data-table--plain" id="series-table">
+                    <thead><tr><th>Görev</th><th>Tekrar</th><th>Sıradaki</th><th>Atanan</th><th>Durum</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var series in _series)
+                        {
+                            <tr data-series="@series.Id">
+                                <td class="cell-title">@series.Title</td>
+                                <td>@Rule(series)</td>
+                                <td>@(series.IsActive ? TaskText.When(series.NextRunAtMs) : "—")</td>
+                                <td>@string.Join(", ", series.Assignees.Select(a => a.Name))</td>
+                                <td>@(series.IsActive ? "Etkin" : "Durduruldu")</td>
+                                <td>
+                                    @if (series.IsActive)
+                                    {
+                                        <button type="button" class="link-button series-edit" disabled="@Busy" @onclick="() => Open(series)">Düzenle</button>
+                                        <button type="button" class="link-button series-stop" disabled="@Busy" @onclick="() => StopAsync(series)">Durdur</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </MudPaper>
+    }
+
+    <DetailSheet Id="series-sheet" Open="_form is not null" Busy="Busy" Eyebrow="Tekrarlayan görev" Title="@(_editing is null ? "Yeni" : "Düzenle")" OnClose="() => _form = null">
+        <ChildContent>
+            @if (_form is { } form)
+            {
+                <TaskEditor Form="form" People="_people" CanManage="_canManage" Me="Session.UserId" Busy="Busy" ShowSubtasks="true" />
+                <div class="stack-form">
+                    <div class="form-row document-form">
+                        <label class="stack-field">
+                            <span class="field-label">Sıklık</span>
+                            <select class="portal-select" id="series-frequency" value="@_frequency" disabled="@Busy" @onchange="e => _frequency = e.Value?.ToString() ?? Weekly">
+                                <option value="DAILY">Her gün</option>
+                                <option value="@Weekly">Her hafta</option>
+                                <option value="MONTHLY">Her ay</option>
+                            </select>
+                        </label>
+                        <label class="stack-field">
+                            <span class="field-label">Kaç @(_frequency == "DAILY" ? "günde" : _frequency == "MONTHLY" ? "ayda" : "haftada") bir</span>
+                            <input type="number" class="portal-input portal-input--number" id="series-interval" min="1" max="52" value="@_interval" disabled="@Busy" @onchange="e => _interval = int.TryParse(e.Value?.ToString(), out var n) ? n : 1" />
+                        </label>
+                        <label class="stack-field">
+                            <span class="field-label">Saat</span>
+                            <input type="time" class="portal-input" id="series-time" value="@_time" disabled="@Busy" @onchange="e => _time = e.Value?.ToString() ?? DefaultTime" />
+                        </label>
+                        <label class="stack-field">
+                            <span class="field-label">Süre (saat, boş = bitişsiz)</span>
+                            <input type="number" class="portal-input portal-input--number" id="series-due-hours" min="1" step="1" value="@_dueHours" disabled="@Busy" @onchange="e => _dueHours = int.TryParse(e.Value?.ToString(), out var h) && h > 0 ? h : null" />
+                        </label>
+                        <label class="stack-field">
+                            <span class="field-label">Son gün</span>
+                            <input type="date" class="portal-input" id="series-ends" value="@_ends" disabled="@Busy" @onchange="e => _ends = e.Value?.ToString()" />
+                        </label>
+                    </div>
+                    @if (_frequency == Weekly)
+                    {
+                        <div class="task-people" id="series-weekdays" style="display: flex; flex-wrap: wrap; gap: 4px 16px">
+                            @for (var i = 0; i < Days.Length; i++)
+                            {
+                                var bit = 1 << i;
+                                <label class="inline-field" data-day="@bit">
+                                    <input type="checkbox" checked="@((_weekdays & bit) != 0)" disabled="@Busy" @onchange="e => _weekdays = e.Value is true ? _weekdays | bit : _weekdays & ~bit" />
+                                    @Days[i]
+                                </label>
+                            }
+                        </div>
+                    }
+                    @if (_frequency == "MONTHLY")
+                    {
+                        <label class="stack-field">
+                            <span class="field-label">Ayın günü</span>
+                            <input type="number" class="portal-input portal-input--number" id="series-month-day" min="1" max="31" value="@_monthDay" disabled="@Busy" @onchange="e => _monthDay = int.TryParse(e.Value?.ToString(), out var d) ? d : 1" />
+                        </label>
+                    }
+                </div>
+            }
+        </ChildContent>
+        <Footer>
+            <span style="flex: 1"></span>
+            <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="() => _form = null">Vazgeç</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" OnClick="SaveAsync" id="series-save">Kaydet</MudButton>
+        </Footer>
+    </DetailSheet>
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Tasks;
+
+    private const string Weekly = "WEEKLY";
+    private const string DefaultTime = "09:00";
+
+    /// <summary>The server's weekday bits: Monday 1 … Sunday 64.</summary>
+    private static readonly string[] Days = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
+
+    private TaskSeriesDto[] _series = [];
+    private TaskPersonDto[] _people = [];
+    private bool _canManage;
+    private TaskSeriesDto? _editing;
+    private TaskEditorForm? _form;
+    private string _frequency = Weekly;
+    private int _interval = 1;
+    private int _weekdays = 1;
+    private int _monthDay = 1;
+    private string _time = DefaultTime;
+    private int? _dueHours;
+    private string? _ends;
+
+    protected override async Task LoadAsync()
+    {
+        _canManage = (await Api.TaskSummaryAsync()).CanManage;
+        _people = await Api.TaskPeopleAsync();
+        _series = await Api.TaskSeriesAsync();
+    }
+
+    private void Open(TaskSeriesDto? series)
+    {
+        _editing = series;
+        _form = series is null
+            ? TaskEditorForm.New(Session.UserId)
+            : TaskEditorForm.From(new TaskDto
+            {
+                Title = series.Title, Description = series.Description, Priority = series.Priority, RequiresPhoto = series.RequiresPhoto,
+                CustomerCode = series.CustomerCode, CustomerName = series.CustomerName, VisitReminder = series.VisitReminder,
+                Assignees = series.Assignees, Followers = series.Followers,
+            });
+        if (series is null)
+        {
+            (_frequency, _interval, _weekdays, _monthDay, _time, _dueHours, _ends) = (Weekly, 1, 1, 1, DefaultTime, null, null);
+        }
+        else
+        {
+            _form.SubtaskLines = string.Join('\n', series.SubtaskTitles);
+            _frequency = series.Frequency;
+            _interval = series.Interval;
+            _weekdays = series.Weekdays;
+            _monthDay = series.MonthDay;
+            _time = $"{series.TimeOfDayMinutes / 60:00}:{series.TimeOfDayMinutes % 60:00}";
+            _dueHours = series.DueAfterMinutes is { } minutes ? Math.Max(1, minutes / 60) : null;
+            _ends = series.EndsAtMs is { } ends ? Fmt.IsoDay(Fmt.DayOfMs(ends)) : null;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        var form = _form!;
+        if (string.IsNullOrWhiteSpace(form.Title))
+        {
+            Error = "Başlık girin.";
+            return;
+        }
+        var minutes = TimeOnly.TryParse(_time, out var at) ? at.Hour * 60 + at.Minute : 9 * 60;
+        var op = new TaskOp
+        {
+            // Kept while a send has no answer: sent again it is the same series, never a second one (Codex #253).
+            OpId = form.OpId,
+            Type = _editing is null ? "create_series" : "update_series",
+            SeriesId = _editing?.Id ?? form.NewId,
+            Title = form.Title.Trim(),
+            Description = form.Description,
+            Priority = form.Priority,
+            RequiresPhoto = form.RequiresPhoto,
+            CustomerCode = string.IsNullOrWhiteSpace(form.CustomerCode) ? null : form.CustomerCode.Trim(),
+            CustomerName = string.IsNullOrWhiteSpace(form.CustomerCode) ? null : form.CustomerName,
+            VisitReminder = !string.IsNullOrWhiteSpace(form.CustomerCode) && form.VisitReminder,
+            AssigneeIds = [.. form.Assignees],
+            FollowerIds = [.. form.Followers],
+            SubtaskTitles = form.SubtaskLines.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            Frequency = _frequency,
+            Interval = _interval,
+            Weekdays = _frequency == Weekly ? _weekdays : 0,
+            MonthDay = _monthDay,
+            TimeOfDayMinutes = minutes,
+            DueAfterMinutes = _dueHours * 60,
+            // The last day is included: the series ends when the next day starts.
+            EndsAtMs = Fmt.TryIsoDay(_ends, out var last) ? Fmt.DayStartMs(last.AddDays(1)) : null,
+        };
+        var sent = await SendAsync(op);
+        if (sent != TaskSendResult.Unknown) form.Answered();
+        if (sent == TaskSendResult.Applied) _form = null;
+    }
+
+    private Task StopAsync(TaskSeriesDto series) => SendAsync(new TaskOp { Type = "stop_series", SeriesId = series.Id });
+
+    private async Task<TaskSendResult> SendAsync(TaskOp op)
+    {
+        var sent = TaskSendResult.Refused;
+        await RunAsync(async () =>
+        {
+            TaskOpsResponse answer;
+            try
+            {
+                answer = await Api.TaskOpsAsync([op]);
+            }
+            catch (Exception ex) when (TaskSend.IsUnknown(ex))
+            {
+                sent = TaskSendResult.Unknown;
+                throw;
+            }
+            var refused = answer.Results.FirstOrDefault(r => r.Status == "rejected");
+            if (refused is not null) Error = refused.Message ?? "İşlem yapılamadı.";
+            sent = refused is null ? TaskSendResult.Applied : TaskSendResult.Refused;
+            _series = await Api.TaskSeriesAsync();
+        });
+        return sent;
+    }
+
+    private static string Rule(TaskSeriesDto series)
+    {
+        var every = series.Interval > 1 ? $"{series.Interval} " : string.Empty;
+        var time = $"{series.TimeOfDayMinutes / 60:00}:{series.TimeOfDayMinutes % 60:00}";
+        return series.Frequency switch
+        {
+            "DAILY" => $"{(every.Length > 0 ? every + "günde bir" : "Her gün")} {time}",
+            "MONTHLY" => $"{(every.Length > 0 ? every + "ayda bir" : "Her ay")} {series.MonthDay}. gün {time}",
+            _ => $"{(every.Length > 0 ? every + "haftada bir" : "Her hafta")} {string.Join(", ", Enumerable.Range(0, 7).Where(i => (series.Weekdays & (1 << i)) != 0).Select(i => Days[i]))} {time}",
+        };
+    }
+}

@@ -18,7 +18,7 @@
 | K8 | Zamanlama üçü birden: ileri tarihli başlangıç (`startAtMs`, o ana kadar atanana bildirim gitmez), tekrarlayan seri (`task_series`, günlük/haftalık/aylık), hatırlatma (telefonda yerel). |
 | K9 | Resim: görev başına en çok 10, her biri ≤ 2 MB (telefon ~1600 px / ~300 KB'a küçültür). **PostgreSQL'de** (`task_attachment_blobs`, bytea) — Coolify'da kalıcı disk tanımı gerekmez, yedeğe girer. Firma kotası 1 GB (`Tasks:TenantAttachmentQuotaBytes`). Silinen görevin resimleri 30 gün sonra temizlenir. İsteğe bağlı "tamamlarken fotoğraf zorunlu" (`requiresPhoto`). |
 | K10 | Görev isteğe bağlı bir cariye bağlanır (`customerCode`, `customerName`); cari detayında görünür. |
-| K11 | İlk sürüm telefonda; web paneli sonraki adım. Öncelik, yorum, takipçi ilk sürümde; etiket/toplu işlem sonra. |
+| K11 | İlk sürüm telefonda; web paneli sonraki adım. Öncelik, yorum, takipçi ilk sürümde; etiket/toplu işlem sonra. **Panel 2026-10-02'de geldi** (`GOAL_PANEL_GIRIS` P6: `/gorevler`, `/gorevler/seriler`, bildirim zili; panel oturumunda `module.tasks` sunucuda denetlenir). |
 | K12 | Saat dilimi: seri zamanları `Europe/Istanbul` yerel saatiyle tanımlanır; saklama unix ms (UTC). |
 
 ## 2. Veri modeli (CentralApi, EF Core, yeni tablolar)
