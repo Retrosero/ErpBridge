@@ -1375,7 +1375,14 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `POST /users/{id}/preferences/copy` (belge ve istenirse kilitler, tek kayıt; bilinmeyen hedefte kimse değişmez), `GET /roles/view-preferences`,
      `PUT /roles/{role}/view-preferences`. Sözleşme: `docs/api-contracts.md`. Sunucu yolları yorumlamaz; ayar listesi telefonun kataloğudur
      (`docs/view-settings-catalog.json`, panel kopyası).
-   - Test: `UserPreferencesRelationalTests`, `ViewPreferenceAdminRelationalTests`, `ViewPreferenceLayersTests`. Telefon ayağı: Siparis_Cepte KB kural 54, 59.
+   - **Panel (D aşaması):** Kullanıcılar > "Görünüm" (`Shared/UserViewPrefsSheet`; her kullanıcıda, kendisinde de) ve "Görünüm şablonları"
+     (`Pages/GorunumSablonlari`, `/gorunum-sablonlari`, yalnız `PortalArea.Users`). İkisi de `Shared/ViewPrefsEditor` ile telefonun kataloğundan çizilir:
+     `Resources/view-settings-catalog.json` (Siparis_Cepte `docs/view-settings-catalog.json` kopyası, gömülü kaynak; telefon ayar ekleyince dosya yeniden
+     kopyalanır). Düzenleme mantığı `Api/ViewPrefsDraft` (saf): kişi modunda kendi iç içe belgesi + kişi kilitleri, rol modunda düz değer + kilit; kaynak
+     etiketi Varsayılan / Rolden / Kişisel / Kişiye kilitli / Rol kilidi (rol kilidi kişide değiştirilemez, şablonda değiştirilir). Panel bilmediği alanları
+     korur. Kişi panelinden "Başkasına kopyala" (kaydedilmemiş değişiklik varken kapalı). Kayıt `expectedVersion` ile; çakışmada sunucunun mesajı görünür.
+   - Test: `UserPreferencesRelationalTests`, `ViewPreferenceAdminRelationalTests`, `ViewPreferenceLayersTests`, `PortalViewPreferencesTests`. Telefon ayağı:
+     Siparis_Cepte KB kural 54, 59.
 
 36. **Müşteri kataloğu: gerçek istemci IP'si, giriş yavaşlatıcı, katalog tabloları, kilitli yetki, müşteri oturumu, talepler, belge bağı ve panelden siparişe çevirme (GOAL_MUSTERI_KATALOGU S1–S10, 2026-10-01).**
    - **Gerçek istemci IP'si:** `Security/ForwardedHeadersSetup`. `ForwardedHeaders:KnownNetworks` / `ForwardedHeaders:KnownProxies`

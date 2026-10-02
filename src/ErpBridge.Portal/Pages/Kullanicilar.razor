@@ -87,6 +87,8 @@ else
                                                 <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Disabled="@Busy" Class="erp-btn"
                                                            OnClick="() => StartMappingAsync(user)">Mikro</MudButton>
                                             }
+                                            <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Disabled="@Busy" Class="view-prefs-btn"
+                                                       OnClick="() => OpenViewPrefs(user)">Görünüm</MudButton>
                                             @if (!self)
                                             {
                                                 <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" Disabled="@Busy" Class="roles-btn"
@@ -231,6 +233,7 @@ else
 }
 
 <UserPermissionsSheet User="_permissionsUser" OnClose="ClosePermissions" OnSaved="PermissionsSavedAsync" />
+<UserViewPrefsSheet User="_viewPrefsUser" Users="@(_list?.Users ?? [])" OnClose="() => _viewPrefsUser = null" OnSaved="PermissionsSavedAsync" />
 
 @code {
     protected override PortalArea Requires => PortalArea.Users;
@@ -245,6 +248,15 @@ else
     }
 
     private void ClosePermissions() => _permissionsUser = null;
+
+    /// <summary>The person whose view settings sheet is open (Siparis_Cepte KB kural 59).</summary>
+    private UserDto? _viewPrefsUser;
+
+    private void OpenViewPrefs(UserDto user)
+    {
+        Notice = null;
+        _viewPrefsUser = user;
+    }
 
     private async Task PermissionsSavedAsync(string message)
     {

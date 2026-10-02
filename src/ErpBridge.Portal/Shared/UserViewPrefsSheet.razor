@@ -1,0 +1,173 @@
+@* One person's view settings (Siparis_Cepte KB kural 59): their own values and locks over their roles' defaults, and copying
+   them onto other people. *@
+@inject PortalApiClient Api
+
+<DetailSheet Id="user-view-prefs" Open="@(User is not null)" Busy="@_busy" Title="@(User?.FullName ?? string.Empty)" Eyebrow="Görünüm" OnClose="CloseAsync">
+    <ChildContent>
+        @if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="view-prefs-error">@_error</MudAlert>
+        }
+        @if (_prefs is not null && _draft is not null)
+        {
+            <div class="role-badges perm-roles">
+                @foreach (var role in _prefs.Roles)
+                {
+                    <span class="badge badge--muted">@Fmt.Role(role)</span>
+                }
+            </div>
+            <MudText Typo="Typo.caption" Class="text-muted panel-note" id="view-prefs-meta">@Meta(_prefs)</MudText>
+            <MudText Typo="Typo.caption" Class="text-muted panel-note">
+                Kişinin kendi ayarı yoksa rolünün varsayılanı geçerlidir. Kilitli ayarı kişi telefondan değiştiremez. Değişiklik telefona kişi ana
+                sayfayı açınca geçer; telefonda çevrimdışıyken yapılmış ve henüz gönderilmemiş bir değişiklik varsa telefondaki kazanır.
+            </MudText>
+            @if (_copyOpen)
+            {
+                <div class="vp-copy" id="view-prefs-copy">
+                    <div class="field-label">Bu kişinin görünümü kimlere uygulansın?</div>
+                    @foreach (var other in Users.Where(u => u.Id != _prefs.UserId))
+                    {
+                        <label class="vp-copy-user" data-user="@other.Username">
+                            <input type="checkbox" checked="@_copyTargets.Contains(other.Id)" @onchange="e => ToggleTarget(other.Id, e.Value is true)" />
+                            @other.FullName
+                        </label>
+                    }
+                    <label class="vp-copy-locks">
+                        <input type="checkbox" id="view-prefs-copy-locks" checked="@_copyLocks" @onchange="e => _copyLocks = e.Value is true" />
+                        Kilitler de kopyalansın
+                    </label>
+                    <MudText Typo="Typo.caption" Class="text-muted">Seçilen kişilerin kendi görünüm ayarları bunun yerine geçer.</MudText>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@(_busy || _copyTargets.Count == 0)" OnClick="CopyAsync" id="view-prefs-copy-run">
+                        Kopyala (@_copyTargets.Count)
+                    </MudButton>
+                </div>
+            }
+            <ViewPrefsEditor Id="user-view-prefs-editor" Catalog="_catalog" Draft="_draft" OnChanged="StateHasChanged" />
+        }
+    </ChildContent>
+    <Footer>
+        <MudButton Variant="Variant.Text" OnClick="CloseAsync" Disabled="@_busy" id="view-prefs-close">Kapat</MudButton>
+        @if (_draft is not null)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="@(_busy || _draft.Changes > 0)" OnClick="ToggleCopy" id="view-prefs-copy-open"
+                       title="@(_draft.Changes > 0 ? "Önce kaydedin" : null)">
+                Başkasına kopyala
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_busy || _draft.Changes == 0)" OnClick="SaveAsync" id="view-prefs-save">
+                Kaydet@(_draft.Changes > 0 ? $" ({_draft.Changes})" : "")
+            </MudButton>
+        }
+    </Footer>
+</DetailSheet>
+
+@code {
+    /// <summary>The person being edited; null closes the sheet.</summary>
+    [Parameter] public UserDto? User { get; set; }
+
+    /// <summary>The company's users, to copy onto.</summary>
+    [Parameter] public IReadOnlyList<UserDto> Users { get; set; } = [];
+
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<string> OnSaved { get; set; }
+
+    private readonly ViewSettingsCatalogDto _catalog = ViewSettingsCatalogFile.Load();
+    private UserViewPreferencesDto? _prefs;
+    private ViewPrefsDraft? _draft;
+    private Guid? _loadedFor;
+    private bool _busy;
+    private string? _error;
+    private bool _copyOpen;
+    private bool _copyLocks;
+    private readonly HashSet<Guid> _copyTargets = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (User is null)
+        {
+            _loadedFor = null;
+            _prefs = null;
+            _draft = null;
+            return;
+        }
+        if (_loadedFor == User.Id) return;
+        _loadedFor = User.Id;
+        _error = null;
+        _copyOpen = false;
+        _copyTargets.Clear();
+        await RunAsync(async () => Show(await Api.UserViewPreferencesAsync(User.Id)));
+    }
+
+    private void Show(UserViewPreferencesDto prefs)
+    {
+        _prefs = prefs;
+        _draft = new ViewPrefsDraft(_catalog, ViewPrefsMode.User,
+            ViewPrefsDraft.ObjectOf(prefs.Data), ViewPrefsDraft.ObjectOf(prefs.Locks),
+            ViewPrefsDraft.ObjectOf(prefs.RoleBase.Data), ViewPrefsDraft.ObjectOf(prefs.RoleBase.Locks));
+    }
+
+    private static string Meta(UserViewPreferencesDto prefs)
+    {
+        if (prefs.UpdatedAtUtc is not { } at) return "Kişi henüz görünüm ayarı kaydetmedi; rollerinin varsayılanlarını görüyor.";
+        var by = prefs.UpdatedByName is { Length: > 0 } name ? $" · {name}" : string.Empty;
+        var from = prefs.UpdatedByClient switch { "portal" => " (panel)", "android" => " (telefon)", _ => string.Empty };
+        return $"Son değişiklik {Fmt.Time(at)}{by}{from}";
+    }
+
+    private void ToggleCopy() => _copyOpen = !_copyOpen;
+
+    private void ToggleTarget(Guid id, bool on)
+    {
+        if (on) _copyTargets.Add(id);
+        else _copyTargets.Remove(id);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (User is null || _prefs is null || _draft is null || _draft.Changes == 0) return;
+        var user = User;
+        var request = new UpdateViewPreferencesRequest { Data = _draft.Values, Locks = _draft.Locks, ExpectedVersion = _prefs.Version };
+        await RunAsync(async () =>
+        {
+            Show(await Api.SaveUserViewPreferencesAsync(user.Id, request));
+            await OnSaved.InvokeAsync($"{user.FullName} için görünüm ayarları kaydedildi.");
+        });
+    }
+
+    private async Task CopyAsync()
+    {
+        if (User is null || _copyTargets.Count == 0) return;
+        var user = User;
+        var request = new CopyViewPreferencesRequest { TargetUserIds = _copyTargets.ToArray(), IncludeLocks = _copyLocks };
+        await RunAsync(async () =>
+        {
+            var result = await Api.CopyUserViewPreferencesAsync(user.Id, request);
+            _copyOpen = false;
+            _copyTargets.Clear();
+            await OnSaved.InvokeAsync($"{user.FullName} kişisinin görünümü {result.Copied} kişiye kopyalandı.");
+        });
+    }
+
+    private async Task CloseAsync() => await OnClose.InvokeAsync();
+
+    private async Task RunAsync(Func<Task> work)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            await work();
+        }
+        catch (PortalApiException failed)
+        {
+            _error = failed.Message;
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Sunucuya ulaşılamadı. Bağlantınızı kontrol edip tekrar deneyin.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

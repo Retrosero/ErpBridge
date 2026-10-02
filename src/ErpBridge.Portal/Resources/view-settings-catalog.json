@@ -1,0 +1,2628 @@
+{
+  "version": 1,
+  "pages": [
+    {
+      "key": "home",
+      "title": "Ana Sayfa",
+      "route": null,
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Kartlar",
+          "settings": [
+            {
+              "path": "home.showTargetCard",
+              "type": "toggle",
+              "title": "Günün hedefi kartı",
+              "description": "Ciro hedefi, ziyaret, tahsilat ve fiş adetleri",
+              "default": true
+            },
+            {
+              "path": "home.targetPeriod",
+              "type": "choice",
+              "title": "Hedef kartı açılış dönemi",
+              "description": "Kartın çipleriyle o an yine değiştirilebilir",
+              "default": "DAILY",
+              "options": [
+                {
+                  "value": "DAILY",
+                  "label": "Gün"
+                },
+                {
+                  "value": "WEEKLY",
+                  "label": "Hafta"
+                },
+                {
+                  "value": "MONTHLY",
+                  "label": "Ay"
+                }
+              ]
+            },
+            {
+              "path": "home.showRouteCard",
+              "type": "toggle",
+              "title": "Sıradaki rota ziyareti kartı",
+              "description": "Sıradaki rota müşterisi, bakiyesi ve hızlı sipariş/tahsilat",
+              "default": true
+            },
+            {
+              "path": "home.showRecentTransactions",
+              "type": "toggle",
+              "title": "Son işlemler",
+              "description": "Son tahsilat, ödeme ve satışlar",
+              "default": true
+            }
+          ]
+        },
+        {
+          "title": "Günün özeti (KPI)",
+          "settings": [
+            {
+              "path": "home.activeKpis",
+              "type": "ordered_multi",
+              "title": "Göstergeler",
+              "description": "Seçilenler bu sırayla gösterilir; hiçbiri seçili değilse bölüm gizlenir",
+              "default": [
+                "ciro",
+                "ziyaret"
+              ],
+              "options": [
+                {
+                  "value": "ciro",
+                  "label": "Günlük Ciro"
+                },
+                {
+                  "value": "ziyaret",
+                  "label": "Ziyaret / Hedef"
+                },
+                {
+                  "value": "bekleyen_satis",
+                  "label": "Bekleyen Fişler"
+                },
+                {
+                  "value": "tahsilat",
+                  "label": "Günlük Tahsilat"
+                },
+                {
+                  "value": "onay_bekleyen",
+                  "label": "Onay Bekleyen"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Hızlı işlemler",
+          "settings": [
+            {
+              "path": "home.showQuickLabels",
+              "type": "toggle",
+              "title": "Alan adlarını göster",
+              "description": "Kapalıysa karolar yalnız ikonla görünür",
+              "default": true
+            },
+            {
+              "path": "home.quickActionsExpanded",
+              "type": "toggle",
+              "title": "Tamamı açık başlasın",
+              "description": "Telefonda ilk iki satır yerine bütün işlemler (yatayda hep açıktır)",
+              "default": false
+            },
+            {
+              "path": "home.quickActionsOrder",
+              "type": "order",
+              "title": "Sıra ve görünürlük",
+              "description": "Basılı tutup sürükleyerek sıralayın; anahtar karoyu ana sayfada gösterir",
+              "default": [
+                "sales",
+                "quotes",
+                "suspended_sales",
+                "operations/purchase",
+                "operations/returns",
+                "operations/collection",
+                "operations/disbursement",
+                "operations/cashbox",
+                "operations/eod",
+                "customers",
+                "reports",
+                "operations/stocks",
+                "operations/counting",
+                "operations/warehouses",
+                "catalog",
+                "operations/approvals",
+                "wms_warehouse",
+                "operations/expenses",
+                "operations/vehicles",
+                "route_plans",
+                "tasks",
+                "customer_orders"
+              ],
+              "options": [
+                {
+                  "value": "sales",
+                  "label": "Satış"
+                },
+                {
+                  "value": "quotes",
+                  "label": "Teklif"
+                },
+                {
+                  "value": "suspended_sales",
+                  "label": "Bekleyen"
+                },
+                {
+                  "value": "operations/purchase",
+                  "label": "Alış"
+                },
+                {
+                  "value": "operations/returns",
+                  "label": "İade"
+                },
+                {
+                  "value": "operations/collection",
+                  "label": "Tahsilat"
+                },
+                {
+                  "value": "operations/disbursement",
+                  "label": "Ödeme"
+                },
+                {
+                  "value": "operations/cashbox",
+                  "label": "Kasa"
+                },
+                {
+                  "value": "operations/eod",
+                  "label": "Gün Sonu"
+                },
+                {
+                  "value": "customers",
+                  "label": "Müşteriler"
+                },
+                {
+                  "value": "reports",
+                  "label": "Raporlar"
+                },
+                {
+                  "value": "operations/stocks",
+                  "label": "Stoklar"
+                },
+                {
+                  "value": "operations/counting",
+                  "label": "Sayım"
+                },
+                {
+                  "value": "operations/warehouses",
+                  "label": "Depolar"
+                },
+                {
+                  "value": "catalog",
+                  "label": "Katalog"
+                },
+                {
+                  "value": "operations/approvals",
+                  "label": "Onay Merkezi"
+                },
+                {
+                  "value": "wms_warehouse",
+                  "label": "Depo (WMS)"
+                },
+                {
+                  "value": "operations/expenses",
+                  "label": "Giderler"
+                },
+                {
+                  "value": "operations/vehicles",
+                  "label": "Araçlar"
+                },
+                {
+                  "value": "route_plans",
+                  "label": "Rut Planı"
+                },
+                {
+                  "value": "tasks",
+                  "label": "Görevler"
+                },
+                {
+                  "value": "customer_orders",
+                  "label": "Müşteri Siparişi"
+                }
+              ],
+              "switchPath": "home.visibleModules",
+              "switchDefault": [
+                "catalog",
+                "customers",
+                "more",
+                "operations/approvals",
+                "operations/cashbox",
+                "operations/collection",
+                "operations/counting",
+                "operations/disbursement",
+                "operations/eod",
+                "operations/expenses",
+                "operations/purchase",
+                "operations/returns",
+                "operations/stocks",
+                "operations/vehicles",
+                "operations/warehouses",
+                "quotes",
+                "reports",
+                "route_plans",
+                "sales",
+                "suspended_sales",
+                "tasks",
+                "wms_warehouse"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "sales",
+      "title": "Satış",
+      "route": "sales",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "sales"
+            }
+          ]
+        },
+        {
+          "title": "Açılış",
+          "settings": [
+            {
+              "path": "sales.viewMode",
+              "type": "choice",
+              "title": "Görünüm şekli",
+              "description": "Araçlar menüsünden o an yine değiştirilebilir",
+              "default": "Detail",
+              "options": [
+                {
+                  "value": "Detail",
+                  "label": "Detay"
+                },
+                {
+                  "value": "List",
+                  "label": "Liste"
+                },
+                {
+                  "value": "Grid",
+                  "label": "Kutu"
+                }
+              ]
+            },
+            {
+              "path": "sales.sortField",
+              "type": "choice",
+              "title": "Sıralama",
+              "description": "",
+              "default": "İsim",
+              "options": [
+                {
+                  "value": "İsim",
+                  "label": "İsim"
+                },
+                {
+                  "value": "Kod",
+                  "label": "Kod"
+                },
+                {
+                  "value": "Fiyat",
+                  "label": "Fiyat"
+                },
+                {
+                  "value": "Marka",
+                  "label": "Marka"
+                },
+                {
+                  "value": "Stok",
+                  "label": "Stok"
+                }
+              ]
+            },
+            {
+              "path": "sales.sortAsc",
+              "type": "toggle",
+              "title": "Artan sıralama",
+              "description": "Kapalıysa Z→A / büyükten küçüğe",
+              "default": true
+            },
+            {
+              "path": "sales.hideOutOfStock",
+              "type": "toggle",
+              "title": "Yalnız stokta olanlar",
+              "description": "Kapalıysa stoğu olmayan ürünler de listelenir",
+              "default": true
+            },
+            {
+              "path": "sales.hideNoPhoto",
+              "type": "toggle",
+              "title": "Görseli olmayanları gizle",
+              "description": "Yalnız fotoğrafı olan ürünler gösterilir",
+              "default": false
+            },
+            {
+              "path": "sales.workedOnly",
+              "type": "toggle",
+              "title": "Yalnız çalıştığım ürünler",
+              "description": "Seçili cariye daha önce sattığınız ürünler",
+              "default": false
+            }
+          ]
+        },
+        {
+          "title": "Detay satırı",
+          "settings": [
+            {
+              "path": "salesScreen.detailGrid",
+              "type": "toggle",
+              "title": "Bilgi ızgarası",
+              "description": "Kod, barkod, kategori, marka, ambalaj, ölçü, koli ve stok; kapalıysa kod · marka · stok tek satırda",
+              "default": true
+            }
+          ]
+        },
+        {
+          "title": "Kutu / Liste kartı (Detay sabittir)",
+          "settings": [
+            {
+              "path": "sales.fields.image",
+              "type": "toggle",
+              "title": "Görseller",
+              "description": "Ürün fotoğrafı; araçlar menüsünden o an yine açılıp kapanır",
+              "default": false
+            },
+            {
+              "path": "sales.fields.code",
+              "type": "toggle",
+              "title": "Ürün kodu",
+              "description": "Kartın üstündeki soluk kod satırı",
+              "default": true
+            },
+            {
+              "path": "sales.fields.brand",
+              "type": "toggle",
+              "title": "Marka",
+              "description": "Marka satırı",
+              "default": true
+            },
+            {
+              "path": "sales.fields.box",
+              "type": "toggle",
+              "title": "Koli",
+              "description": "Koli içi adet satırı",
+              "default": true
+            },
+            {
+              "path": "sales.fields.packaging",
+              "type": "toggle",
+              "title": "Ambalaj",
+              "description": "Ambalaj satırı",
+              "default": true
+            },
+            {
+              "path": "sales.fields.measurement",
+              "type": "toggle",
+              "title": "Ölçü",
+              "description": "Ölçü satırı",
+              "default": true
+            },
+            {
+              "path": "sales.fields.price",
+              "type": "toggle",
+              "title": "Fiyat",
+              "description": "Birim fiyat",
+              "default": true
+            },
+            {
+              "path": "sales.fields.stockBadge",
+              "type": "toggle",
+              "title": "Stok rozeti",
+              "description": "\"N stokta\" / \"Stok yok\" rozeti",
+              "default": true
+            },
+            {
+              "path": "sales.fields.qtyBar",
+              "type": "toggle",
+              "title": "Adet çubuğu",
+              "description": "Ekle, −/+ ve adet; kapalıysa ürün yalnız detaydan eklenir",
+              "default": true
+            },
+            {
+              "path": "sales.fields.boxButton",
+              "type": "toggle",
+              "title": "Koli düğmesi",
+              "description": "Adet çubuğundaki +koli düğmesi",
+              "default": true,
+              "requires": "sales.fields.qtyBar"
+            }
+          ]
+        },
+        {
+          "title": "Sepet",
+          "settings": [
+            {
+              "path": "salesScreen.totalsExpanded",
+              "type": "toggle",
+              "title": "Tutar dökümü açık başlasın",
+              "description": "Sepet özetinde ara toplam, iskonto ve KDV satırları",
+              "default": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "quotes",
+      "title": "Teklif",
+      "route": "quotes",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "quotes"
+            }
+          ]
+        },
+        {
+          "title": "Açılış",
+          "settings": [
+            {
+              "path": "quotes.openPage",
+              "type": "choice",
+              "title": "Açılış sayfası",
+              "description": "",
+              "default": "CREATE",
+              "options": [
+                {
+                  "value": "CREATE",
+                  "label": "Teklif Oluştur"
+                },
+                {
+                  "value": "SAVED",
+                  "label": "Kayıtlı"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Ürün satırı",
+          "settings": [
+            {
+              "path": "quotes.showImages",
+              "type": "toggle",
+              "title": "Görseller",
+              "description": "Ürün fotoğrafı",
+              "default": true
+            },
+            {
+              "path": "quotes.showStock",
+              "type": "toggle",
+              "title": "Stok bilgisi",
+              "description": "\"Stok: N\"; teklif müşteriye gösterilirken kapatılabilir",
+              "default": true
+            }
+          ]
+        },
+        {
+          "title": "Dışa aktarma",
+          "settings": [
+            {
+              "path": "quotes.exportColumns",
+              "type": "multi",
+              "title": "PDF / Excel sütunları",
+              "description": "Dışa aktarma sayfası bu sütunlarla açılır; o an yine değiştirilebilir",
+              "default": [
+                "product_name",
+                "product_code",
+                "quantity",
+                "unit_price",
+                "line_total"
+              ],
+              "options": [
+                {
+                  "value": "product_name",
+                  "label": "Ürün Adı"
+                },
+                {
+                  "value": "product_code",
+                  "label": "Ürün Kodu"
+                },
+                {
+                  "value": "barcode",
+                  "label": "Barkod"
+                },
+                {
+                  "value": "unit_price",
+                  "label": "Fiyat"
+                },
+                {
+                  "value": "carton_quantity",
+                  "label": "Koli Adeti"
+                },
+                {
+                  "value": "brand",
+                  "label": "Marka"
+                },
+                {
+                  "value": "category",
+                  "label": "Kategori"
+                },
+                {
+                  "value": "quantity",
+                  "label": "Adet"
+                },
+                {
+                  "value": "line_total",
+                  "label": "Toplam"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "suspended_sales",
+      "title": "Bekleyen",
+      "route": "suspended_sales",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "suspended_sales"
+            }
+          ]
+        },
+        {
+          "title": "Açılış",
+          "settings": [
+            {
+              "path": "suspended.sort",
+              "type": "choice",
+              "title": "Sıralama",
+              "description": "",
+              "default": "NEWEST",
+              "options": [
+                {
+                  "value": "NEWEST",
+                  "label": "Yeniden eskiye"
+                },
+                {
+                  "value": "OLDEST",
+                  "label": "Eskiden yeniye"
+                },
+                {
+                  "value": "CUSTOMER",
+                  "label": "Cari adı"
+                },
+                {
+                  "value": "AMOUNT",
+                  "label": "Tutar"
+                }
+              ]
+            },
+            {
+              "path": "suspended.expandItems",
+              "type": "toggle",
+              "title": "Kalem dökümü açık başlasın",
+              "description": "Kartlar ürün satırlarıyla açılır",
+              "default": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "purchase",
+      "title": "Alış",
+      "route": "operations/purchase",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "operations/purchase"
+            }
+          ]
+        },
+        {
+          "title": "Ürün formu",
+          "settings": [
+            {
+              "path": "purchase.defaultQuantity",
+              "type": "choice",
+              "title": "Başlangıç miktarı",
+              "description": "Ürün eklerken miktar alanı bununla dolu gelir",
+              "default": 10,
+              "options": [
+                {
+                  "value": 1,
+                  "label": "1"
+                },
+                {
+                  "value": 5,
+                  "label": "5"
+                },
+                {
+                  "value": 10,
+                  "label": "10"
+                },
+                {
+                  "value": 12,
+                  "label": "12"
+                },
+                {
+                  "value": 24,
+                  "label": "24"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Alt bar",
+          "settings": [
+            {
+              "path": "purchase.showTotalsBreakdown",
+              "type": "toggle",
+              "title": "Tutar dökümü",
+              "description": "Brüt − iskonto ve ara toplam + KDV satırları",
+              "default": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "returns",
+      "title": "İade",
+      "route": "operations/returns",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "operations/returns"
+            }
+          ]
+        },
+        {
+          "title": "Açılış",
+          "settings": [
+            {
+              "path": "returns.autoOpenCustomerSheet",
+              "type": "toggle",
+              "title": "Cari seçimi kendiliğinden açılsın",
+              "description": "Cari seçilmemişken ekran cari listesiyle açılır",
+              "default": true
+            }
+          ]
+        },
+        {
+          "title": "Ürün kartı",
+          "settings": [
+            {
+              "path": "returns.showImages",
+              "type": "toggle",
+              "title": "Görseller",
+              "description": "Ürün fotoğrafı",
+              "default": true
+            }
+          ]
+        },
+        {
+          "title": "Kapanış",
+          "settings": [
+            {
+              "path": "returns.defaultSettlement",
+              "type": "choice",
+              "title": "Varsayılan kapanış yöntemi",
+              "description": "Kapanış sayfasında o an yine değiştirilebilir",
+              "default": "Cari Alacak",
+              "options": [
+                {
+                  "value": "Cari Alacak",
+                  "label": "Cari Alacak"
+                },
+                {
+                  "value": "Nakit",
+                  "label": "Nakit"
+                },
+                {
+                  "value": "Banka İade",
+                  "label": "Banka İade"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "collection",
+      "title": "Tahsilat",
+      "route": "operations/collection",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "operations/collection"
+            }
+          ]
+        },
+        {
+          "title": "Ödeme tipi",
+          "settings": [
+            {
+              "path": "collection.defaultMethod",
+              "type": "choice",
+              "title": "Varsayılan ödeme tipi",
+              "description": "Ekran bu tiple açılır",
+              "default": "Cash",
+              "options": [
+                {
+                  "value": "Cash",
+                  "label": "Nakit"
+                },
+                {
+                  "value": "Card",
+                  "label": "Kredi Kartı"
+                },
+                {
+                  "value": "Transfer",
+                  "label": "Havale / EFT"
+                },
+                {
+                  "value": "Cheque",
+                  "label": "Çek"
+                },
+                {
+                  "value": "PromissoryNote",
+                  "label": "Senet"
+                }
+              ]
+            },
+            {
+              "path": "collection.visibleMethods",
+              "type": "multi",
+              "title": "Şeritte görünen tipler",
+              "description": "Varsayılan tip ve tutar girilmiş tip her zaman görünür",
+              "default": [
+                "Cash",
+                "Card",
+                "Transfer",
+                "Cheque",
+                "PromissoryNote"
+              ],
+              "options": [
+                {
+                  "value": "Cash",
+                  "label": "Nakit"
+                },
+                {
+                  "value": "Card",
+                  "label": "Kredi Kartı"
+                },
+                {
+                  "value": "Transfer",
+                  "label": "Havale / EFT"
+                },
+                {
+                  "value": "Cheque",
+                  "label": "Çek"
+                },
+                {
+                  "value": "PromissoryNote",
+                  "label": "Senet"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Tutar",
+          "settings": [
+            {
+              "path": "collection.showQuickFullAmount",
+              "type": "toggle",
+              "title": "\"Tamamı / Kalanı\" çipi",
+              "description": "Cari borcunu tek dokunuşla yazar",
+              "default": true
+            }
+          ]
+        },
+        {
+          "title": "Kayıt ve geçmiş",
+          "settings": [
+            {
+              "path": "collection.afterSave",
+              "type": "choice",
+              "title": "Kayıttan sonra",
+              "description": "Ekranda kalınca form boşalır",
+              "default": "DASHBOARD",
+              "options": [
+                {
+                  "value": "DASHBOARD",
+                  "label": "Ana sayfaya dön"
+                },
+                {
+                  "value": "STAY",
+                  "label": "Ekranda kal"
+                }
+              ]
+            },
+            {
+              "path": "collection.recentLimit",
+              "type": "choice",
+              "title": "Son tahsilatlar",
+              "description": "Carinin son tahsilatları sayfasında gösterilen kayıt",
+              "default": 20,
+              "options": [
+                {
+                  "value": 10,
+                  "label": "10"
+                },
+                {
+                  "value": 20,
+                  "label": "20"
+                },
+                {
+                  "value": 50,
+                  "label": "50"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "disbursement",
+      "title": "Ödeme",
+      "route": "operations/disbursement",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "operations/disbursement"
+            }
+          ]
+        },
+        {
+          "title": "Ödeme",
+          "settings": [
+            {
+              "path": "disbursement.defaultSource",
+              "type": "choice",
+              "title": "Varsayılan ödeme kaynağı",
+              "description": "Ekran bu kaynakla açılır",
+              "default": "Cash",
+              "options": [
+                {
+                  "value": "Cash",
+                  "label": "Kasa"
+                },
+                {
+                  "value": "Bank",
+                  "label": "Banka"
+                }
+              ]
+            },
+            {
+              "path": "disbursement.showQuickAmounts",
+              "type": "toggle",
+              "title": "Hazır tutar çipleri",
+              "description": "1.000 / 5.000 / 10.000",
+              "default": true
+            },
+            {
+              "path": "disbursement.showQuickFullAmount",
+              "type": "toggle",
+              "title": "\"Alacağın tamamı\" çipi",
+              "description": "Carinin alacağını tek dokunuşla yazar",
+              "default": true
+            }
+          ]
+        },
+        {
+          "title": "Kayıt",
+          "settings": [
+            {
+              "path": "disbursement.afterSave",
+              "type": "choice",
+              "title": "Kayıttan sonra",
+              "description": "Ekranda kalınca form boşalır",
+              "default": "DASHBOARD",
+              "options": [
+                {
+                  "value": "DASHBOARD",
+                  "label": "Ana sayfaya dön"
+                },
+                {
+                  "value": "STAY",
+                  "label": "Ekranda kal"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "cashbox",
+      "title": "Kasa",
+      "route": "operations/cashbox",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "operations/cashbox"
+            }
+          ]
+        },
+        {
+          "title": "Kasa hareketleri",
+          "settings": [
+            {
+              "path": "cashbox.defaultFilter",
+              "type": "choice",
+              "title": "Açılış hareket türü",
+              "description": "",
+              "default": "Tümü",
+              "options": [
+                {
+                  "value": "Tümü",
+                  "label": "Tümü"
+                },
+                {
+                  "value": "Tahsilat",
+                  "label": "Tahsilat"
+                },
+                {
+                  "value": "Tediye",
+                  "label": "Tediye"
+                },
+                {
+                  "value": "Satış",
+                  "label": "Satış"
+                },
+                {
+                  "value": "İade",
+                  "label": "İade"
+                }
+              ]
+            },
+            {
+              "path": "cashbox.sort",
+              "type": "choice",
+              "title": "Sıralama",
+              "description": "",
+              "default": "NEWEST",
+              "options": [
+                {
+                  "value": "NEWEST",
+                  "label": "Yeni üstte"
+                },
+                {
+                  "value": "OLDEST",
+                  "label": "Eski üstte"
+                }
+              ]
+            },
+            {
+              "path": "cashbox.showDescriptions",
+              "type": "toggle",
+              "title": "Açıklamalar",
+              "description": "Hareketin açıklama satırı",
+              "default": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "eod",
+      "title": "Gün Sonu",
+      "route": "operations/eod",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "operations/eod"
+            }
+          ]
+        },
+        {
+          "title": "Açılış",
+          "settings": [
+            {
+              "path": "eod.openDay",
+              "type": "choice",
+              "title": "Açılış günü",
+              "description": "Ok tuşlarıyla o an yine değiştirilebilir",
+              "default": "TODAY",
+              "options": [
+                {
+                  "value": "TODAY",
+                  "label": "Bugün"
+                },
+                {
+                  "value": "YESTERDAY",
+                  "label": "Dün"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Düzen",
+          "settings": [
+            {
+              "path": "eod.showKpis",
+              "type": "toggle",
+              "title": "Özet kartları",
+              "description": "Günün satış, tahsilat, tediye ve iade toplamları",
+              "default": true
+            },
+            {
+              "path": "eod.cashCardOnTop",
+              "type": "toggle",
+              "title": "\"Kasaya teslim\" kartı üstte",
+              "description": "Telefonda özet kartlarının hemen altında; kapalıysa en altta",
+              "default": false
+            },
+            {
+              "path": "eod.documentTypes",
+              "type": "multi",
+              "title": "Listelenen belge türleri",
+              "description": "Yalnız listeyi süzer; toplamlar ve kasaya teslim tutarı değişmez",
+              "default": [
+                "Satış",
+                "Tahsilat",
+                "Tediye",
+                "İade",
+                "Alış"
+              ],
+              "options": [
+                {
+                  "value": "Satış",
+                  "label": "Satış"
+                },
+                {
+                  "value": "Tahsilat",
+                  "label": "Tahsilat"
+                },
+                {
+                  "value": "Tediye",
+                  "label": "Tediye"
+                },
+                {
+                  "value": "İade",
+                  "label": "İade"
+                },
+                {
+                  "value": "Alış",
+                  "label": "Alış"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "customers",
+      "title": "Müşteriler",
+      "route": "customers",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "customers"
+            }
+          ]
+        },
+        {
+          "title": "Liste",
+          "settings": [
+            {
+              "path": "customers.showCodeLine",
+              "type": "toggle",
+              "title": "Kod · fiyat grubu satırı",
+              "description": "Cari adının altındaki soluk satır",
+              "default": true
+            },
+            {
+              "path": "customers.quickActions",
+              "type": "multi",
+              "title": "Hızlı eylemler",
+              "description": "Satırın altındaki düğmeler; hiçbiri seçili değilse şerit gizlenir",
+              "default": [
+                "call",
+                "collection",
+                "order"
+              ],
+              "options": [
+                {
+                  "value": "call",
+                  "label": "Ara"
+                },
+                {
+                  "value": "collection",
+                  "label": "Tahsilat"
+                },
+                {
+                  "value": "order",
+                  "label": "Sipariş"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Cari detayı",
+          "settings": [
+            {
+              "path": "customers.detailTab",
+              "type": "choice",
+              "title": "Açılış sekmesi",
+              "description": "Son seçilen: bir önceki carideki sekme",
+              "default": "LAST",
+              "options": [
+                {
+                  "value": "LAST",
+                  "label": "Son seçilen"
+                },
+                {
+                  "value": "Overview",
+                  "label": "Özet"
+                },
+                {
+                  "value": "Transactions",
+                  "label": "Hareketler"
+                },
+                {
+                  "value": "Products",
+                  "label": "Ürünler"
+                },
+                {
+                  "value": "Notes",
+                  "label": "Notlar"
+                }
+              ]
+            },
+            {
+              "path": "customers.ledgerAllYears",
+              "type": "toggle",
+              "title": "Tüm yıllarla aç",
+              "description": "Hareketler ve dönem özeti; kapalıysa bu yıl",
+              "default": false
+            },
+            {
+              "path": "customers.showPeriodTiles",
+              "type": "toggle",
+              "title": "Dönem kutuları",
+              "description": "Satış, tahsilat, alış/tediye ve iade toplamları",
+              "default": true
+            },
+            {
+              "path": "customers.showTasksCard",
+              "type": "toggle",
+              "title": "Görevler kartı",
+              "description": "Cariye ait açık görevler",
+              "default": true
+            },
+            {
+              "path": "customers.showCatalogAccessCard",
+              "type": "toggle",
+              "title": "Katalog erişimi kartı",
+              "description": "Müşteri web kataloğu erişimi",
+              "default": true
+            },
+            {
+              "path": "customers.productsShowImages",
+              "type": "toggle",
+              "title": "Ürünler sekmesinde görseller",
+              "description": "Daha önce alınan ürünlerin fotoğrafı",
+              "default": true
+            },
+            {
+              "path": "customers.notesShowTemplates",
+              "type": "toggle",
+              "title": "Not şablonları",
+              "description": "Notlar sekmesindeki hızlı şablonlar",
+              "default": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "reports",
+      "title": "Raporlar",
+      "route": "reports",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "reports"
+            }
+          ]
+        },
+        {
+          "title": "Rapor listesi",
+          "settings": [
+            {
+              "path": "reports.hiddenReports",
+              "type": "multi",
+              "title": "Gizlenen raporlar",
+              "description": "Seçilenler listede görünmez",
+              "default": [],
+              "options": [
+                {
+                  "value": "MONTHLY",
+                  "label": "Satış eğilimi"
+                },
+                {
+                  "value": "PRODUCTS",
+                  "label": "Ürün performansı"
+                },
+                {
+                  "value": "CUSTOMERS",
+                  "label": "Cari satışları"
+                },
+                {
+                  "value": "REGIONS",
+                  "label": "Bölge performansı"
+                },
+                {
+                  "value": "COLLECTIONS",
+                  "label": "Tahsilatlar"
+                },
+                {
+                  "value": "RISK",
+                  "label": "Cari riskleri"
+                },
+                {
+                  "value": "STOCK",
+                  "label": "Kritik stok"
+                },
+                {
+                  "value": "EXPIRY",
+                  "label": "Son kullanma tarihleri"
+                },
+                {
+                  "value": "PIPELINE",
+                  "label": "Teklif ve siparişler"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Rapor detayı",
+          "settings": [
+            {
+              "path": "reports.openYear",
+              "type": "choice",
+              "title": "Açılış yılı",
+              "description": "",
+              "default": "CURRENT",
+              "options": [
+                {
+                  "value": "CURRENT",
+                  "label": "Bu yıl"
+                },
+                {
+                  "value": "PREVIOUS",
+                  "label": "Geçen yıl"
+                }
+              ]
+            },
+            {
+              "path": "reports.comparePreviousYear",
+              "type": "toggle",
+              "title": "Geçen yılla karşılaştır",
+              "description": "Aylık satış raporu karşılaştırmayla açılır",
+              "default": false
+            },
+            {
+              "path": "reports.showCharts",
+              "type": "toggle",
+              "title": "Grafikler",
+              "description": "Grafik kartı ve satırlardaki çubuklar",
+              "default": true
+            }
+          ]
+        },
+        {
+          "title": "Son kullanma tarihleri",
+          "settings": [
+            {
+              "path": "reports.expiryWindowDays",
+              "type": "choice",
+              "title": "Açılış penceresi",
+              "description": "SKT raporu",
+              "default": 30,
+              "options": [
+                {
+                  "value": 7,
+                  "label": "7 gün"
+                },
+                {
+                  "value": 30,
+                  "label": "30 gün"
+                },
+                {
+                  "value": 90,
+                  "label": "90 gün"
+                },
+                {
+                  "value": 0,
+                  "label": "Tümü"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "stocks",
+      "title": "Stoklar",
+      "route": "operations/stocks",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "operations/stocks"
+            }
+          ]
+        },
+        {
+          "title": "Liste (açılış)",
+          "settings": [
+            {
+              "path": "stocks.sortOrder",
+              "type": "choice",
+              "title": "Sıralama",
+              "description": "",
+              "default": "Ürün Adı [A-Z]",
+              "options": [
+                {
+                  "value": "Ürün Adı [A-Z]",
+                  "label": "Ad A-Z"
+                },
+                {
+                  "value": "Ürün Adı [Z-A]",
+                  "label": "Ad Z-A"
+                },
+                {
+                  "value": "Miktar [Azalan]",
+                  "label": "Miktar azalan"
+                },
+                {
+                  "value": "Miktar [Artan]",
+                  "label": "Miktar artan"
+                },
+                {
+                  "value": "SKT [En yakın]",
+                  "label": "SKT en yakın"
+                }
+              ]
+            },
+            {
+              "path": "stocks.stockFilter",
+              "type": "choice",
+              "title": "Stok durumu",
+              "description": "",
+              "default": "ALL",
+              "options": [
+                {
+                  "value": "ALL",
+                  "label": "Tümü"
+                },
+                {
+                  "value": "IN_STOCK",
+                  "label": "Stokta"
+                },
+                {
+                  "value": "OUT_OF_STOCK",
+                  "label": "Stoksuz"
+                },
+                {
+                  "value": "CRITICAL",
+                  "label": "Kritik"
+                }
+              ]
+            },
+            {
+              "path": "stocks.imageFilter",
+              "type": "choice",
+              "title": "Görsel",
+              "description": "",
+              "default": "ALL",
+              "options": [
+                {
+                  "value": "ALL",
+                  "label": "Tümü"
+                },
+                {
+                  "value": "WITH_IMAGE",
+                  "label": "Görselli"
+                },
+                {
+                  "value": "WITHOUT_IMAGE",
+                  "label": "Görselsiz"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Liste kartı",
+          "settings": [
+            {
+              "path": "stocks.showImages",
+              "type": "toggle",
+              "title": "Görseller",
+              "description": "Kapalıysa liste daha hızlı kayar",
+              "default": true
+            },
+            {
+              "path": "stocks.showMeta",
+              "type": "toggle",
+              "title": "Kod · depo · kategori",
+              "description": "Ürün adının altındaki satır",
+              "default": true
+            },
+            {
+              "path": "stocks.showPrice",
+              "type": "toggle",
+              "title": "Fiyat",
+              "description": "Birim fiyat",
+              "default": true
+            },
+            {
+              "path": "stocks.showExpiryBadge",
+              "type": "toggle",
+              "title": "SKT rozeti",
+              "description": "En yakın son kullanma tarihi",
+              "default": true
+            }
+          ]
+        },
+        {
+          "title": "Stok detayı",
+          "settings": [
+            {
+              "path": "stockDetail.showImages",
+              "type": "toggle",
+              "title": "Görseller",
+              "description": "Üstteki fotoğraf galerisi",
+              "default": true
+            },
+            {
+              "path": "stockDetail.showWarehouses",
+              "type": "toggle",
+              "title": "Depo dağılımı",
+              "description": "Depo başına stok",
+              "default": true
+            },
+            {
+              "path": "stockDetail.showExpiry",
+              "type": "toggle",
+              "title": "Son kullanma tarihleri",
+              "description": "SKT kayıtları bölümü",
+              "default": true
+            },
+            {
+              "path": "stockDetail.hideClosedExpiry",
+              "type": "toggle",
+              "title": "Tükenen SKT kayıtlarını gizle",
+              "description": "",
+              "default": false,
+              "requires": "stockDetail.showExpiry"
+            },
+            {
+              "path": "stockDetail.movementsMode",
+              "type": "choice",
+              "title": "Hareketler açılışta",
+              "description": "",
+              "default": "MOVEMENTS",
+              "options": [
+                {
+                  "value": "MOVEMENTS",
+                  "label": "Hareketler"
+                },
+                {
+                  "value": "BEST_CUSTOMERS",
+                  "label": "En çok satanlar"
+                }
+              ]
+            },
+            {
+              "path": "stockDetail.descriptionExpanded",
+              "type": "toggle",
+              "title": "Açıklama açık başlasın",
+              "description": "Kapalıysa ilk 4 satır",
+              "default": false
+            }
+          ]
+        },
+        {
+          "title": "Barkod ürün kartı",
+          "settings": [
+            {
+              "path": "scannedProduct.openMode",
+              "type": "choice",
+              "title": "Okutunca",
+              "description": "Alt bardaki barkod düğmesi",
+              "default": "SHEET",
+              "options": [
+                {
+                  "value": "SHEET",
+                  "label": "Ürün kartı"
+                },
+                {
+                  "value": "STOCK_DETAIL",
+                  "label": "Doğrudan stok detayı"
+                }
+              ]
+            },
+            {
+              "path": "scannedProduct.showImages",
+              "type": "toggle",
+              "title": "Görseller",
+              "description": "",
+              "default": true
+            },
+            {
+              "path": "scannedProduct.showWarehouses",
+              "type": "toggle",
+              "title": "Depo stokları",
+              "description": "",
+              "default": true
+            },
+            {
+              "path": "scannedProduct.showPackaging",
+              "type": "toggle",
+              "title": "Paketleme",
+              "description": "Koli, paket, ölçü, ambalaj",
+              "default": true
+            },
+            {
+              "path": "scannedProduct.showDescription",
+              "type": "toggle",
+              "title": "Açıklama",
+              "description": "",
+              "default": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "counting",
+      "title": "Sayım",
+      "route": "operations/counting",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "operations/counting"
+            }
+          ]
+        },
+        {
+          "title": "Açılış",
+          "settings": [
+            {
+              "path": "counting.openTab",
+              "type": "choice",
+              "title": "Açılış sekmesi",
+              "description": "",
+              "default": "Catalog",
+              "options": [
+                {
+                  "value": "Catalog",
+                  "label": "Katalog"
+                },
+                {
+                  "value": "Basket",
+                  "label": "Sepet"
+                },
+                {
+                  "value": "History",
+                  "label": "Geçmiş"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Ürün satırı",
+          "settings": [
+            {
+              "path": "counting.showImages",
+              "type": "toggle",
+              "title": "Görseller",
+              "description": "",
+              "default": true
+            },
+            {
+              "path": "counting.showOtherWarehouses",
+              "type": "toggle",
+              "title": "\"Diğer depolar\" satırı",
+              "description": "Ürünün başka depolardaki stoğu",
+              "default": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "warehouses",
+      "title": "Depolar",
+      "route": "operations/warehouses",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "operations/warehouses"
+            }
+          ]
+        },
+        {
+          "title": "Depo detayı",
+          "settings": [
+            {
+              "path": "warehouses.sortOrder",
+              "type": "choice",
+              "title": "Sıralama",
+              "description": "",
+              "default": "İsim (A-Z)",
+              "options": [
+                {
+                  "value": "İsim (A-Z)",
+                  "label": "İsim A-Z"
+                },
+                {
+                  "value": "Kod (A-Z)",
+                  "label": "Kod A-Z"
+                },
+                {
+                  "value": "Stok (Azalan)",
+                  "label": "Stok azalan"
+                },
+                {
+                  "value": "Stok (Artan)",
+                  "label": "Stok artan"
+                }
+              ]
+            },
+            {
+              "path": "warehouses.onlyInStock",
+              "type": "toggle",
+              "title": "Yalnız stokta",
+              "description": "\"Sadece stokta\" çipi seçili açılır",
+              "default": false
+            },
+            {
+              "path": "warehouses.showImages",
+              "type": "toggle",
+              "title": "Görseller",
+              "description": "",
+              "default": true
+            },
+            {
+              "path": "warehouses.showPrice",
+              "type": "toggle",
+              "title": "Fiyat",
+              "description": "",
+              "default": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "catalog",
+      "title": "Katalog",
+      "route": "catalog",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "catalog"
+            }
+          ]
+        },
+        {
+          "title": "Açılış",
+          "settings": [
+            {
+              "path": "catalog.viewMode",
+              "type": "choice",
+              "title": "Görünüm şekli",
+              "description": "Ekrandan o an yine değiştirilebilir",
+              "default": "Grid",
+              "options": [
+                {
+                  "value": "Grid",
+                  "label": "Kutu"
+                },
+                {
+                  "value": "List",
+                  "label": "Liste"
+                }
+              ]
+            },
+            {
+              "path": "catalog.sortField",
+              "type": "choice",
+              "title": "Sıralama",
+              "description": "",
+              "default": "İsim",
+              "options": [
+                {
+                  "value": "İsim",
+                  "label": "İsim"
+                },
+                {
+                  "value": "Kod",
+                  "label": "Kod"
+                },
+                {
+                  "value": "Fiyat",
+                  "label": "Fiyat"
+                },
+                {
+                  "value": "Marka",
+                  "label": "Marka"
+                },
+                {
+                  "value": "Stok",
+                  "label": "Stok"
+                }
+              ]
+            },
+            {
+              "path": "catalog.sortAsc",
+              "type": "toggle",
+              "title": "Artan sıralama",
+              "description": "Kapalıysa Z→A / büyükten küçüğe",
+              "default": true
+            },
+            {
+              "path": "catalog.hideOutOfStock",
+              "type": "toggle",
+              "title": "Yalnız stokta olanlar",
+              "description": "Kapalıysa stoğu olmayan ürünler de listelenir",
+              "default": true
+            },
+            {
+              "path": "catalog.hideNoPhoto",
+              "type": "toggle",
+              "title": "Görseli olmayanları gizle",
+              "description": "Yalnız fotoğrafı olan ürünler gösterilir",
+              "default": true
+            },
+            {
+              "path": "catalog.workedOnly",
+              "type": "toggle",
+              "title": "Yalnız çalıştığım ürünler",
+              "description": "Seçili cariye daha önce sattığınız ürünler",
+              "default": false
+            }
+          ]
+        },
+        {
+          "title": "Ürün kartı",
+          "settings": [
+            {
+              "path": "catalog.fields.image",
+              "type": "toggle",
+              "title": "Görseller",
+              "description": "Ürün fotoğrafı",
+              "default": true
+            },
+            {
+              "path": "catalog.fields.code",
+              "type": "toggle",
+              "title": "Ürün kodu",
+              "description": "Kartın üstündeki soluk kod satırı",
+              "default": true
+            },
+            {
+              "path": "catalog.fields.brand",
+              "type": "toggle",
+              "title": "Marka",
+              "description": "Marka satırı",
+              "default": true
+            },
+            {
+              "path": "catalog.fields.box",
+              "type": "toggle",
+              "title": "Koli",
+              "description": "Koli içi adet satırı",
+              "default": true
+            },
+            {
+              "path": "catalog.fields.packaging",
+              "type": "toggle",
+              "title": "Ambalaj",
+              "description": "Ambalaj satırı",
+              "default": true
+            },
+            {
+              "path": "catalog.fields.measurement",
+              "type": "toggle",
+              "title": "Ölçü",
+              "description": "Ölçü satırı",
+              "default": true
+            },
+            {
+              "path": "catalog.fields.price",
+              "type": "toggle",
+              "title": "Fiyat",
+              "description": "Birim fiyat",
+              "default": true
+            },
+            {
+              "path": "catalog.fields.stockBadge",
+              "type": "toggle",
+              "title": "Stok rozeti",
+              "description": "\"N stokta\" / \"Stok yok\" rozeti",
+              "default": true
+            },
+            {
+              "path": "catalog.fields.qtyBar",
+              "type": "toggle",
+              "title": "Adet çubuğu",
+              "description": "Ekle, −/+ ve adet; kapalıysa ürün yalnız detaydan eklenir",
+              "default": true
+            },
+            {
+              "path": "catalog.fields.boxButton",
+              "type": "toggle",
+              "title": "Koli düğmesi",
+              "description": "Adet çubuğundaki +koli düğmesi",
+              "default": true,
+              "requires": "catalog.fields.qtyBar"
+            }
+          ]
+        },
+        {
+          "title": "Yerleşim",
+          "settings": [
+            {
+              "path": "catalogScreen.categoryPanel",
+              "type": "choice",
+              "title": "Kategori paneli açılışta",
+              "description": "Otomatik: tablette açık, telefonda kapalı",
+              "default": "AUTO",
+              "options": [
+                {
+                  "value": "AUTO",
+                  "label": "Otomatik"
+                },
+                {
+                  "value": "OPEN",
+                  "label": "Açık"
+                },
+                {
+                  "value": "CLOSED",
+                  "label": "Kapalı"
+                }
+              ]
+            },
+            {
+              "path": "catalogScreen.tabletCartOpen",
+              "type": "toggle",
+              "title": "Tablette sepet paneli açık",
+              "description": "Kapalıysa ürünler tüm genişliği kullanır",
+              "default": true
+            },
+            {
+              "path": "catalogScreen.tabletColumns",
+              "type": "choice",
+              "title": "Tablette ürün sütunu",
+              "description": "Telefonda ekran genişliğine göredir",
+              "default": 0,
+              "options": [
+                {
+                  "value": 0,
+                  "label": "Otomatik"
+                },
+                {
+                  "value": 2,
+                  "label": "2"
+                },
+                {
+                  "value": 3,
+                  "label": "3"
+                },
+                {
+                  "value": 4,
+                  "label": "4"
+                },
+                {
+                  "value": 5,
+                  "label": "5"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "approvals",
+      "title": "Onay Merkezi",
+      "route": "operations/approvals",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "operations/approvals"
+            }
+          ]
+        },
+        {
+          "title": "Açılış",
+          "settings": [
+            {
+              "path": "approvals.openStatus",
+              "type": "choice",
+              "title": "Durum",
+              "description": "",
+              "default": "PENDING",
+              "options": [
+                {
+                  "value": "PENDING",
+                  "label": "Bekleyen"
+                },
+                {
+                  "value": "APPROVED",
+                  "label": "Onaylanan"
+                },
+                {
+                  "value": "REJECTED",
+                  "label": "Reddedilen"
+                },
+                {
+                  "value": "WITHDRAWN",
+                  "label": "Geri çekilen"
+                }
+              ]
+            },
+            {
+              "path": "approvals.openKind",
+              "type": "choice",
+              "title": "Tür",
+              "description": "",
+              "default": "ALL",
+              "options": [
+                {
+                  "value": "ALL",
+                  "label": "Tümü"
+                },
+                {
+                  "value": "SALE",
+                  "label": "Satış"
+                },
+                {
+                  "value": "PURCHASE",
+                  "label": "Alış"
+                },
+                {
+                  "value": "RETURN",
+                  "label": "İade"
+                },
+                {
+                  "value": "COLLECTION",
+                  "label": "Tahsilat"
+                },
+                {
+                  "value": "DISBURSEMENT",
+                  "label": "Tediye"
+                },
+                {
+                  "value": "STOCK_COUNT",
+                  "label": "Sayım"
+                },
+                {
+                  "value": "PRODUCT_CARD",
+                  "label": "Ürün kartı"
+                },
+                {
+                  "value": "CUSTOMER_CARD",
+                  "label": "Müşteri kartı"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "wms_warehouse",
+      "title": "Depo (WMS)",
+      "route": "wms_warehouse",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "wms_warehouse"
+            }
+          ]
+        },
+        {
+          "title": "Açılış",
+          "settings": [
+            {
+              "path": "wms.openTab",
+              "type": "choice",
+              "title": "Açılış sekmesi",
+              "description": "",
+              "default": "Pending",
+              "options": [
+                {
+                  "value": "Pending",
+                  "label": "Bekleyen"
+                },
+                {
+                  "value": "Preparing",
+                  "label": "Hazırlanıyor"
+                },
+                {
+                  "value": "Packed",
+                  "label": "Paketlendi"
+                },
+                {
+                  "value": "Loaded",
+                  "label": "Yüklendi"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Sipariş kartı",
+          "settings": [
+            {
+              "path": "wms.showAmount",
+              "type": "toggle",
+              "title": "Tutar",
+              "description": "",
+              "default": true
+            },
+            {
+              "path": "wms.showSalesperson",
+              "type": "toggle",
+              "title": "Satıcı",
+              "description": "Siparişi alan plasiyer",
+              "default": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "expenses",
+      "title": "Giderler",
+      "route": "operations/expenses",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "operations/expenses"
+            }
+          ]
+        },
+        {
+          "title": "Liste",
+          "settings": [
+            {
+              "path": "expenses.showCategoryBreakdown",
+              "type": "toggle",
+              "title": "Kategori dağılımı",
+              "description": "Ay kartındaki kategori çubukları",
+              "default": true
+            },
+            {
+              "path": "expenses.showReceiptThumbnails",
+              "type": "toggle",
+              "title": "Fiş küçük resimleri",
+              "description": "Gider satırındaki fiş fotoğrafı",
+              "default": true
+            }
+          ]
+        },
+        {
+          "title": "Yeni gider",
+          "settings": [
+            {
+              "path": "expenses.defaultSource",
+              "type": "choice",
+              "title": "Varsayılan ödeme kaynağı",
+              "description": "",
+              "default": "CA-MAIN",
+              "options": [
+                {
+                  "value": "CA-MAIN",
+                  "label": "Kasa"
+                },
+                {
+                  "value": "CA-BANK",
+                  "label": "Banka"
+                },
+                {
+                  "value": "CA-CARD",
+                  "label": "Kredi Kartı"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "vehicles",
+      "title": "Araçlar",
+      "route": "operations/vehicles",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "operations/vehicles"
+            }
+          ]
+        },
+        {
+          "title": "Liste",
+          "settings": [
+            {
+              "path": "vehicles.showSummaryBadges",
+              "type": "toggle",
+              "title": "Özet rozetleri",
+              "description": "Araç sayısı, yaklaşan ve gecikmiş bakımlar",
+              "default": true
+            },
+            {
+              "path": "vehicles.sort",
+              "type": "choice",
+              "title": "Sıralama",
+              "description": "",
+              "default": "ADDED",
+              "options": [
+                {
+                  "value": "ADDED",
+                  "label": "Ekleme sırası"
+                },
+                {
+                  "value": "PLATE",
+                  "label": "Plaka"
+                },
+                {
+                  "value": "ALERTS",
+                  "label": "Uyarılar önce"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Bakım",
+          "settings": [
+            {
+              "path": "vehicles.maintenancePayFromCash",
+              "type": "toggle",
+              "title": "\"Kasadan düş\" işaretli başlasın",
+              "description": "Bakım tutarı kasadan gider olarak düşülür",
+              "default": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "route_plans",
+      "title": "Rut Planı",
+      "route": "route_plans",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "route_plans"
+            }
+          ]
+        },
+        {
+          "title": "Saha görünümü",
+          "settings": [
+            {
+              "path": "routePlans.showWeeklyPlans",
+              "type": "toggle",
+              "title": "Haftalık planlar",
+              "description": "Bugünün rotasının altındaki plan listesi",
+              "default": true
+            },
+            {
+              "path": "routePlans.hideFinishedStops",
+              "type": "toggle",
+              "title": "Tamamlanan durakları gizle",
+              "description": "Tamamlanan ve atlanan duraklar listede görünmez",
+              "default": false
+            }
+          ]
+        },
+        {
+          "title": "Planlayıcı görünümü",
+          "settings": [
+            {
+              "path": "routePlans.showInactivePlans",
+              "type": "toggle",
+              "title": "Pasif planlar",
+              "description": "Rut planlayabilenlerin plan listesi",
+              "default": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "tasks",
+      "title": "Görevler",
+      "route": "tasks",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": true,
+              "member": "tasks"
+            }
+          ]
+        },
+        {
+          "title": "Açılış",
+          "settings": [
+            {
+              "path": "tasks.openScope",
+              "type": "choice",
+              "title": "Kapsam",
+              "description": "\"Tümü\" yalnız yöneticilerde geçerli",
+              "default": "Mine",
+              "options": [
+                {
+                  "value": "Mine",
+                  "label": "Bana atanan"
+                },
+                {
+                  "value": "Created",
+                  "label": "Oluşturduğum"
+                },
+                {
+                  "value": "Following",
+                  "label": "Takip"
+                },
+                {
+                  "value": "All",
+                  "label": "Tümü"
+                }
+              ]
+            },
+            {
+              "path": "tasks.openFilter",
+              "type": "choice",
+              "title": "Süzgeç",
+              "description": "",
+              "default": "Open",
+              "options": [
+                {
+                  "value": "Open",
+                  "label": "Açık"
+                },
+                {
+                  "value": "Today",
+                  "label": "Bugün"
+                },
+                {
+                  "value": "Overdue",
+                  "label": "Geciken"
+                },
+                {
+                  "value": "Done",
+                  "label": "Tamamlanan"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "title": "Görev detayı",
+          "settings": [
+            {
+              "path": "tasks.historyExpanded",
+              "type": "toggle",
+              "title": "Geçmiş açık başlasın",
+              "description": "Görevin değişiklik geçmişi",
+              "default": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "customer_orders",
+      "title": "Müşteri Siparişi",
+      "route": "customer_orders",
+      "gate": null,
+      "gateNote": null,
+      "sections": [
+        {
+          "title": "Ana sayfa",
+          "settings": [
+            {
+              "path": "home.visibleModules",
+              "type": "member",
+              "title": "Ana sayfada göster",
+              "description": "Hızlı işlemlerde bu sayfanın karosu",
+              "default": false,
+              "member": "customer_orders"
+            }
+          ]
+        },
+        {
+          "title": "Açılış",
+          "settings": [
+            {
+              "path": "customerOrders.status",
+              "type": "choice",
+              "title": "Açılış durumu",
+              "description": "",
+              "default": "NEW",
+              "options": [
+                {
+                  "value": "NEW",
+                  "label": "Yeni"
+                },
+                {
+                  "value": "CLAIMED",
+                  "label": "İşlemde"
+                },
+                {
+                  "value": "COMPLETED",
+                  "label": "Siparişe çevrildi"
+                },
+                {
+                  "value": "REJECTED",
+                  "label": "Reddedildi"
+                },
+                {
+                  "value": "ALL",
+                  "label": "Tümü"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "targets",
+      "title": "Hedeflerim",
+      "route": null,
+      "gate": "targets",
+      "gateNote": "Firma hesabı ve hedef yetkisi olanlarda",
+      "sections": [
+        {
+          "title": "Açılış",
+          "settings": [
+            {
+              "path": "targets.period",
+              "type": "choice",
+              "title": "Açılış dönemi",
+              "description": "Ekrandan o an yine değiştirilebilir",
+              "default": "DAILY",
+              "options": [
+                {
+                  "value": "DAILY",
+                  "label": "Gün"
+                },
+                {
+                  "value": "WEEKLY",
+                  "label": "Hafta"
+                },
+                {
+                  "value": "MONTHLY",
+                  "label": "Ay"
+                }
+              ]
+            },
+            {
+              "path": "targets.teamView",
+              "type": "toggle",
+              "title": "\"Ekibim\" ile aç",
+              "description": "Ekibinizin hedefleriyle açılır",
+              "default": false,
+              "gate": "targets.team",
+              "gateNote": "Yalnız ekibinin hedeflerini görebilenlerde etkili"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

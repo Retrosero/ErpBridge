@@ -1,0 +1,199 @@
+@* Görünüm ayarları düzenleyicisi (Siparis_Cepte KB kural 59): sayfalar solda, seçili sayfanın ayarları sağda. Değerler ve
+   kilitler ViewPrefsDraft'ta değişir; kaydetmeyi bileşeni kullanan sayfa yapar. *@
+@using System.Text.Json
+@using System.Text.Json.Nodes
+
+<div class="vp-editor" id="@Id">
+    <nav class="vp-pages" aria-label="Sayfalar">
+        @foreach (var item in Catalog.Pages)
+        {
+            <button type="button" class="vp-page @(item.Key == Page.Key ? "is-active" : null)" data-page="@item.Key" @onclick="() => _pageKey = item.Key">@item.Title</button>
+        }
+    </nav>
+    <div class="vp-body" data-page="@Page.Key">
+        <div class="vp-head">
+            <div class="vp-title">@Page.Title</div>
+            @if (Page.GateNote is not null)
+            {
+                <div class="field-hint">@Page.GateNote</div>
+            }
+        </div>
+        @foreach (var section in Page.Sections)
+        {
+            <div class="field-label vp-section-title">@section.Title</div>
+            @foreach (var setting in section.Settings)
+            {
+                @Row(setting)
+            }
+        }
+        <div class="vp-page-actions">
+            <MudButton Variant="Variant.Text" Size="Size.Small" Class="vp-reset-page" OnClick="ResetPageAsync">Bu sayfayı varsayılana döndür</MudButton>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ViewSettingsCatalogDto Catalog { get; set; } = default!;
+    [Parameter, EditorRequired] public ViewPrefsDraft Draft { get; set; } = default!;
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public string? Id { get; set; }
+
+    private string? _pageKey;
+
+    private ViewSettingsPageDto Page => Catalog.Pages.FirstOrDefault(p => p.Key == _pageKey) ?? Catalog.Pages.First();
+
+    private async Task EditAsync(Action edit)
+    {
+        edit();
+        await OnChanged.InvokeAsync();
+    }
+
+    private Task ResetPageAsync() => EditAsync(() => Draft.ResetPage(Page));
+
+    private Task SetAsync(ViewSettingDto s, JsonNode? value) => EditAsync(() => Draft.Set(s, value));
+
+    private static string Text(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString()! : value.GetRawText();
+
+    private static JsonNode? Node(JsonElement value) => JsonNode.Parse(value.GetRawText());
+
+    private static JsonArray ListOf(IEnumerable<string> items) => new(items.Select(x => (JsonNode?)JsonValue.Create(x)).ToArray());
+
+    private string SourceClass(ViewSettingDto s) => Draft.Source(s) switch
+    {
+        "Kişiye kilitli" or "Kilitli" or "Rol kilidi" => "badge--warn",
+        "Kişisel" or "Rol ayarı" => "badge--primary",
+        "Rolden" => "badge--violet",
+        _ => "badge--muted",
+    };
+
+    private RenderFragment Row(ViewSettingDto s) =>
+        @<div class="vp-row @(Draft.Enabled(s) ? null : "is-disabled")" data-key="@s.Key">
+            <div class="vp-text">
+                <div class="vp-label">@s.Title</div>
+                @if (!string.IsNullOrEmpty(s.Description))
+                {
+                    <div class="vp-desc text-muted">@s.Description</div>
+                }
+                @if (s.GateNote is not null)
+                {
+                    <div class="field-hint">@s.GateNote</div>
+                }
+                <div class="vp-source"><span class="badge @SourceClass(s)" data-source="@Draft.Source(s)">@Draft.Source(s)</span></div>
+            </div>
+            <div class="vp-control">@Control(s)</div>
+            <div class="vp-actions">
+                @LockButton(s)
+                @if (Draft.Own(s) is not null && !Draft.LockedByRole(s))
+                {
+                    <MudButton Variant="Variant.Text" Size="Size.Small" Class="vp-reset" OnClick="() => EditAsync(() => Draft.Reset(s))">Sıfırla</MudButton>
+                }
+            </div>
+        </div>;
+
+    private RenderFragment LockButton(ViewSettingDto s) =>
+        @<MudIconButton Icon="@(Draft.LockedHere(s) || Draft.LockedByRole(s) ? Icons.Material.Rounded.Lock : Icons.Material.Rounded.LockOpen)"
+                        Size="Size.Small" Class="@($"vp-lock {(Draft.LockedHere(s) ? "is-locked" : Draft.LockedByRole(s) ? "is-role-locked" : string.Empty)}")"
+                        Disabled="@Draft.LockedByRole(s)"
+                        aria-label="@(Draft.LockedHere(s) ? "Kilidi kaldır" : "Kilitle")"
+                        OnClick="() => EditAsync(() => Draft.ToggleLock(s))" />;
+
+    private RenderFragment OnOff(ViewSettingDto s) =>
+        @<div class="tri" role="group">
+            <button type="button" class="tri-btn @(Draft.IsOn(s) ? "is-active" : null)" data-choice="on" disabled="@(!Draft.Enabled(s))" @onclick="() => SetAsync(s, JsonValue.Create(true))">Açık</button>
+            <button type="button" class="tri-btn @(Draft.IsOn(s) ? null : "is-active")" data-choice="off" disabled="@(!Draft.Enabled(s))" @onclick="() => SetAsync(s, JsonValue.Create(false))">Kapalı</button>
+        </div>;
+
+    private RenderFragment Control(ViewSettingDto s) => s.Type switch
+    {
+        "toggle" or "member" => OnOff(s),
+        "choice" => Choice(s),
+        "multi" => Multi(s),
+        "ordered_multi" => OrderedMulti(s),
+        "order" => Order(s),
+        _ => @<span class="text-muted">—</span>,
+    };
+
+    private RenderFragment Choice(ViewSettingDto s) =>
+        @<div class="tri vp-choices" role="group">
+            @foreach (var option in s.Options)
+            {
+                <button type="button" class="tri-btn @(Draft.Same(s, option.Value) ? "is-active" : null)" data-choice="@Text(option.Value)"
+                        disabled="@(!Draft.Enabled(s))" @onclick="() => SetAsync(s, Node(option.Value))">@option.Label</button>
+            }
+        </div>;
+
+    private RenderFragment Multi(ViewSettingDto s)
+    {
+        var selected = Draft.List(s).ToHashSet(StringComparer.Ordinal);
+        return @<div class="vp-chips">
+            @foreach (var option in s.Options)
+            {
+                var id = Text(option.Value);
+                var on = selected.Contains(id);
+                <button type="button" class="vp-chip @(on ? "is-active" : null)" data-choice="@id" disabled="@(!Draft.Enabled(s))"
+                        @onclick="() => SetAsync(s, ListOf(s.Options.Select(o => Text(o.Value)).Where(x => x == id ? !on : selected.Contains(x))))">@option.Label</button>
+            }
+        </div>;
+    }
+
+    /// <summary>Chosen items in their order (KPI'lar): chosen ones move up and down, the rest follow.</summary>
+    private RenderFragment OrderedMulti(ViewSettingDto s)
+    {
+        var chosen = Draft.List(s).Where(x => s.Options.Any(o => Text(o.Value) == x)).ToList();
+        var rows = chosen.Concat(s.Options.Select(o => Text(o.Value)).Where(x => !chosen.Contains(x))).ToList();
+        return @<div class="vp-order">
+            @foreach (var id in rows)
+            {
+                var index = chosen.IndexOf(id);
+                var label = s.Options.First(o => Text(o.Value) == id).Label;
+                <div class="vp-order-row" data-item="@id">
+                    <span class="vp-order-label">@label</span>
+                    @if (index >= 0)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Rounded.ArrowUpward" Size="Size.Small" Class="vp-up" Disabled="@(index == 0 || !Draft.Enabled(s))"
+                                       aria-label="Yukarı" OnClick="() => SetAsync(s, ListOf(Moved(chosen, index, -1)))" />
+                        <MudIconButton Icon="@Icons.Material.Rounded.ArrowDownward" Size="Size.Small" Class="vp-down" Disabled="@(index == chosen.Count - 1 || !Draft.Enabled(s))"
+                                       aria-label="Aşağı" OnClick="() => SetAsync(s, ListOf(Moved(chosen, index, 1)))" />
+                    }
+                    <button type="button" class="vp-chip @(index >= 0 ? "is-active" : null)" data-choice="@id" disabled="@(!Draft.Enabled(s))"
+                            @onclick="() => SetAsync(s, ListOf(index >= 0 ? chosen.Where(x => x != id) : chosen.Append(id)))">@(index >= 0 ? "Seçili" : "Seç")</button>
+                </div>
+            }
+        </div>;
+    }
+
+    /// <summary>Every item in the person's order (hızlı işlemler); each has its own on/off switch and lock.</summary>
+    private RenderFragment Order(ViewSettingDto s)
+    {
+        var known = s.Options.Select(o => Text(o.Value)).ToList();
+        var order = Draft.List(s).Where(known.Contains).ToList();
+        order.AddRange(known.Where(x => !order.Contains(x)));
+        return @<div class="vp-order">
+            @for (var i = 0; i < order.Count; i++)
+            {
+                var index = i;
+                var id = order[index];
+                var option = s.Options.First(o => Text(o.Value) == id);
+                var item = ViewPrefsDraft.SwitchOf(s, option);
+                <div class="vp-order-row" data-item="@id" data-key="@item.Key">
+                    <span class="vp-order-label">@option.Label</span>
+                    <MudIconButton Icon="@Icons.Material.Rounded.ArrowUpward" Size="Size.Small" Class="vp-up" Disabled="@(index == 0 || !Draft.Enabled(s))"
+                                   aria-label="Yukarı" OnClick="() => SetAsync(s, ListOf(Moved(order, index, -1)))" />
+                    <MudIconButton Icon="@Icons.Material.Rounded.ArrowDownward" Size="Size.Small" Class="vp-down" Disabled="@(index == order.Count - 1 || !Draft.Enabled(s))"
+                                   aria-label="Aşağı" OnClick="() => SetAsync(s, ListOf(Moved(order, index, 1)))" />
+                    @OnOff(item)
+                    @LockButton(item)
+                </div>
+            }
+        </div>;
+    }
+
+    private static List<string> Moved(List<string> list, int index, int by)
+    {
+        var copy = list.ToList();
+        var target = index + by;
+        if (target < 0 || target >= copy.Count) return copy;
+        (copy[index], copy[target]) = (copy[target], copy[index]);
+        return copy;
+    }
+}

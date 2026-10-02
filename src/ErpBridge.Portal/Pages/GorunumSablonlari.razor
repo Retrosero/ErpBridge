@@ -1,0 +1,93 @@
+@page "/gorunum-sablonlari"
+@inherits PortalPageBase
+
+<PageTitle>Görünüm şablonları — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Görünüm şablonları" Eyebrow="Yönetim" Subtitle="Rollere göre telefon ekranlarının açılış ve göster/gizle varsayılanları" Busy="Busy" />
+
+    @if (Notice is not null)
+    {
+        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="page-alert" id="page-notice">@Notice</MudAlert>
+    }
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_roles is not null && _draft is not null && _selected is not null)
+    {
+        <MudPaper Outlined="true" Class="panel">
+            <div class="panel-head">
+                <div>
+                    <MudText Typo="Typo.h6">Rol varsayılanları</MudText>
+                    <MudText Typo="Typo.body2" Class="text-muted">
+                        Kişinin kendi ayarı yoksa rolünün varsayılanını görür. Birden çok rolü varsa sıradaki üst rol (Admin, Yönetici, Muhasebe,
+                        Depo, Saha) kazanır. Kilitli ayarı o roldeki kimse telefondan değiştiremez. Kişiye özel ayar ve kopyalama
+                        <a href="kullanicilar">Kullanıcılar</a> sayfasında.
+                    </MudText>
+                </div>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(Busy || _draft.Changes == 0)" OnClick="SaveAsync" id="view-roles-save">
+                    Kaydet@(_draft.Changes > 0 ? $" ({_draft.Changes})" : "")
+                </MudButton>
+            </div>
+            <div class="vp-role-tabs" role="tablist">
+                @foreach (var role in _roles)
+                {
+                    <button type="button" class="vp-page @(role.Role == _selected.Role ? "is-active" : null)" data-role="@role.Role" @onclick="() => Select(role)">
+                        @Fmt.Role(role.Role)
+                    </button>
+                }
+            </div>
+            @if (_draft.Changes > 0)
+            {
+                <MudText Typo="Typo.caption" Class="text-muted panel-note">Kaydetmeden başka role geçerseniz bu roldeki değişiklikler silinir.</MudText>
+            }
+            <ViewPrefsEditor Id="role-view-prefs-editor" Catalog="_catalog" Draft="_draft" OnChanged="StateHasChanged" />
+        </MudPaper>
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Users;
+
+    private readonly ViewSettingsCatalogDto _catalog = ViewSettingsCatalogFile.Load();
+    private RoleViewPreferencesDto[]? _roles;
+    private RoleViewPreferencesDto? _selected;
+    private ViewPrefsDraft? _draft;
+    private string? Notice { get; set; }
+
+    protected override async Task LoadAsync()
+    {
+        _roles = await Api.RoleViewPreferencesAsync();
+        // Saha first: the role most phones have.
+        var keep = _selected?.Role ?? PortalRoles.Sales;
+        Select(_roles.FirstOrDefault(r => r.Role == keep) ?? _roles.First());
+    }
+
+    private void Select(RoleViewPreferencesDto role)
+    {
+        _selected = role;
+        _draft = new ViewPrefsDraft(_catalog, ViewPrefsMode.Role, ViewPrefsDraft.ObjectOf(role.Data), ViewPrefsDraft.ObjectOf(role.Locks));
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_selected is null || _draft is null) return;
+        Notice = null;
+        var role = _selected.Role;
+        var request = new UpdateViewPreferencesRequest { Data = _draft.Values, Locks = _draft.Locks, ExpectedVersion = _selected.Version };
+        await RunAsync(async () =>
+        {
+            var saved = await Api.SaveRoleViewPreferencesAsync(role, request);
+            _roles = _roles!.Select(r => r.Role == role ? saved : r).ToArray();
+            Select(saved);
+            Notice = $"{Fmt.Role(role)} rolünün görünüm varsayılanları kaydedildi.";
+        });
+    }
+}
