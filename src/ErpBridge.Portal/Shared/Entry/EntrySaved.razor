@@ -1,0 +1,67 @@
+@namespace ErpBridge.Portal.Shared.Entry
+@inject PortalApiClient Api
+@* After a save: the document(s) written, and for an ERP company whether the agent has written them yet, with the ERP's
+   number. Printing opens the slip in a new tab (an expense has no slip, as on the phone). *@
+
+<MudPaper Outlined="true" Class="panel entry-saved" id="entry-saved">
+    <div class="panel-head">
+        <MudText Typo="Typo.subtitle1"><b>@EntryKinds.Label(Kind) kaydedildi</b></MudText>
+        <div class="page-header-actions">
+            @if (Erp)
+            {
+                <MudButton Variant="Variant.Text" Size="Size.Small" Disabled="@_refreshing" OnClick="RefreshAsync" id="entry-saved-refresh">Durumu yenile</MudButton>
+            }
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" OnClick="OnNew" id="entry-new">Yeni @EntryKinds.Label(Kind).ToLower(System.Globalization.CultureInfo.GetCultureInfo("tr-TR"))</MudButton>
+        </div>
+    </div>
+    <ul class="entry-saved-list">
+        @foreach (var document in Documents)
+        {
+            var detail = _details.GetValueOrDefault(document.JobId);
+            var state = detail?.State ?? StateOf(document.Status);
+            <li data-job="@document.JobId" data-state="@state">
+                <span class="cell-title">@(detail?.ErpDocumentNo ?? document.ExternalId)</span>
+                <span class="cell-sub entry-saved-state">@EntryKinds.State(state, Erp)@(detail?.Message is { } message ? " — " + message : string.Empty)</span>
+                @if (Kind != EntryKinds.Expense)
+                {
+                    <a class="link-button" href="@($"giris-yazdir?is={document.JobId:D}")" target="_blank" rel="noopener" id="@($"entry-print-{document.JobId:N}")">Yazdır</a>
+                }
+            </li>
+        }
+    </ul>
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public string Kind { get; set; } = string.Empty;
+    [Parameter] public bool Erp { get; set; }
+    [Parameter] public IReadOnlyList<EntryDocumentDto> Documents { get; set; } = [];
+    [Parameter] public EventCallback OnNew { get; set; }
+
+    private readonly Dictionary<Guid, EntryDocumentDetailDto> _details = [];
+    private bool _refreshing;
+
+    /// <summary>A job's status right after the save, in the result's words.</summary>
+    private static string StateOf(string status) => status switch
+    {
+        "Succeeded" => "written",
+        "Failed" or "DeadLetter" => "failed",
+        _ => "pending",
+    };
+
+    private async Task RefreshAsync()
+    {
+        _refreshing = true;
+        try
+        {
+            foreach (var document in Documents) _details[document.JobId] = await Api.EntryDocumentAsync(document.JobId);
+        }
+        catch (Exception ex) when (ex is PortalApiException or HttpRequestException or TaskCanceledException)
+        {
+            // The state stays as it was; the user can try again.
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+}

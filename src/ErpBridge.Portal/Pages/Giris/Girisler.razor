@@ -1,0 +1,99 @@
+@page "/girisler"
+@inherits PortalPageBase
+
+<PageTitle>Son girişler — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Son girişler" Eyebrow="Hızlı giriş" Subtitle="Panelden girilen belgeler ve ERP'ye yazılma durumları." Busy="Busy">
+        <Actions>
+            @if (Session.IsAdmin)
+            {
+                <MudSwitch T="bool" Value="_everyone" ValueChanged="EveryoneChangedAsync" Color="Color.Primary" Label="Herkesin girişleri" id="entries-everyone" />
+            }
+            <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="LoadAsync" id="entries-refresh">Yenile</MudButton>
+        </Actions>
+    </PageHeader>
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_result is { } result)
+    {
+        @if (result.Items.Count == 0)
+        {
+            <EmptyState Title="Henüz giriş yok" Hint="Panelden girilen satış, tahsilat, alış, iade, tediye ve giderler burada görünür." />
+        }
+        else
+        {
+            <MudPaper Outlined="true" Class="panel panel--table">
+                <div class="table-scroll">
+                    <table class="data-table data-table--plain" id="entries-table">
+                        <thead>
+                            <tr>
+                                <th>Tarih</th>
+                                <th>Tür</th>
+                                <th>Cari</th>
+                                <th class="num">Tutar</th>
+                                <th>Durum</th>
+                                <th>Giren</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in result.Items)
+                            {
+                                <tr data-job="@item.JobId" data-state="@item.State">
+                                    <td>@Fmt.Time(item.EnteredAtUtc)</td>
+                                    <td>@EntryKinds.Label(item.Kind)</td>
+                                    <td class="cell-title">@(item.CustomerName ?? "—")</td>
+                                    <td class="num">@(item.Amount is { } amount ? Fmt.Money(amount) : "—")</td>
+                                    <td>@EntryKinds.State(item.State, Erp)@(item.ErpDocumentNo is { } no ? " · " + no : string.Empty)</td>
+                                    <td>@(item.EnteredBy ?? "—")@(item.OwnerName is { } owner && owner != item.EnteredBy ? $" ({owner} adına)" : string.Empty)</td>
+                                    <td>
+                                        @if (item.Kind != EntryKinds.Expense)
+                                        {
+                                            <a class="link-button" href="@($"giris-yazdir?is={item.JobId:D}")" target="_blank" rel="noopener">Yazdır</a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <Pager Page="result.Page" PageSize="result.PageSize" Total="result.Total" Busy="Busy" ShowSize="false" Unit="giriş" PageChanged="PageChangedAsync" />
+            </MudPaper>
+        }
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Entries;
+
+    private EntryDocumentsResponse? _result;
+    private bool _everyone;
+    private int _page = 1;
+
+    private bool Erp => string.Equals(Session.DataSource, "erp", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task LoadAsync() => _result = await Api.EntryDocumentsAsync(_everyone, _page);
+
+    private async Task EveryoneChangedAsync(bool everyone)
+    {
+        _everyone = everyone;
+        _page = 1;
+        await RunAsync(LoadAsync);
+    }
+
+    private async Task PageChangedAsync(int page)
+    {
+        _page = page;
+        await RunAsync(LoadAsync);
+    }
+}

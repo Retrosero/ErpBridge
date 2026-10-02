@@ -1,0 +1,242 @@
+@page "/giris/iade"
+@inherits EntryPageBase
+
+<PageTitle>İade — Yönetim Paneli</PageTitle>
+
+@if (!Ready || Context is null)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="İade" Eyebrow="Hızlı giriş" Subtitle="Yalnız müşteriye satılmış ürünler, satıldığı fiyatlardan biriyle." Busy="Busy" />
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+    @if (Saved is { } saved)
+    {
+        <EntrySaved Kind="@Kind" Erp="IsErp" Documents="saved.Documents" OnNew="NewDocument" />
+    }
+    else
+    {
+        <MudPaper Outlined="true" Class="panel">
+            <form class="stack-form document-form" id="entry-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Busy" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
+                <CustomerPicker Label="Müşteri" Selected="_customer" Disabled="Busy" Picked="CustomerPickedAsync" />
+
+                @if (_customer is not null)
+                {
+                    <div class="stack-field">
+                        <span class="field-label">Satılmış ürünler</span>
+                        <input class="portal-input" id="return-filter" placeholder="Süz: kod, ad ya da barkod" value="@_filter" disabled="@Busy" @oninput="e => _filter = e.Value?.ToString() ?? string.Empty" />
+                        @if (_returnables is null)
+                        {
+                            <span class="field-hint">Yükleniyor…</span>
+                        }
+                        else if (_returnables.Count == 0)
+                        {
+                            <span class="field-hint" id="return-none">Bu müşteriye satılmış ürün yok.</span>
+                        }
+                        else
+                        {
+                            <ul class="pick-list" id="return-products">
+                                @foreach (var product in Filtered)
+                                {
+                                    @foreach (var price in product.Prices)
+                                    {
+                                        <li>
+                                            <button type="button" class="pick-item" data-product="@product.Code" data-price="@Number(price.UnitPrice)" disabled="@Busy" @onclick="() => AddAsync(product, price)">
+                                                <span class="cell-title">@product.Name</span>
+                                                <span class="cell-sub">@product.Code · @Fmt.Money(price.UnitPrice) (KDV hariç)@(string.IsNullOrEmpty(price.LastSold) ? string.Empty : " · son satış " + price.LastSold)</span>
+                                            </button>
+                                        </li>
+                                    }
+                                }
+                            </ul>
+                        }
+                    </div>
+                }
+
+                @if (_lines.Count > 0)
+                {
+                    <div class="table-scroll">
+                        <table class="data-table detail-lines" id="return-lines">
+                            <thead>
+                                <tr>
+                                    <th>Ürün</th>
+                                    <th class="num">Miktar</th>
+                                    <th class="num">Fiyat</th>
+                                    <th class="num">İade oranı %</th>
+                                    <th>Neden</th>
+                                    <th class="num">Tutar</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for (var i = 0; i < _lines.Count; i++)
+                                {
+                                    var line = _lines[i];
+                                    var priced = Preview?.Lines.ElementAtOrDefault(i);
+                                    <tr data-line="@line.Product.Code">
+                                        <td class="cell-title">@line.Product.Name<div class="cell-sub">@line.Product.Code</div></td>
+                                        <td class="num"><input type="number" class="portal-input portal-input--number line-quantity" min="1" step="1" value="@Number(line.Quantity)" disabled="@Busy"
+                                                               @onchange="e => ChangedAsync(() => line.Quantity = ParseDecimal(e.Value) ?? line.Quantity)" /></td>
+                                        <td class="num">@Fmt.Money(line.UnitPrice)</td>
+                                        <td class="num"><input type="number" class="portal-input portal-input--number line-condition" min="0" max="100" step="5" value="@Number(line.ConditionPercent)" disabled="@Busy"
+                                                               @onchange="e => ChangedAsync(() => line.ConditionPercent = Math.Clamp(ParseDecimal(e.Value) ?? 100, 0, 100))" /></td>
+                                        <td><input class="portal-input line-reason" maxlength="120" value="@line.Reason" disabled="@Busy" @onchange="e => ChangedAsync(() => line.Reason = Blank(e.Value))" /></td>
+                                        <td class="num line-total">@(priced is null ? "—" : Fmt.Money(priced.Total))</td>
+                                        <td><MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Class="line-remove" aria-label="Kalemi çıkar" Disabled="Busy" OnClick="() => RemoveAsync(line)" /></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+
+                <div class="form-row">
+                    <label class="stack-field">
+                        <span class="field-label">İade şekli</span>
+                        <select class="portal-select" id="return-settlement" value="@_settlement" disabled="@Busy" @onchange="e => ChangedAsync(() => _settlement = e.Value?.ToString() ?? OpenRefund)">
+                            <option value="@OpenRefund">Cari alacak</option>
+                            <option value="Nakit">Nakit</option>
+                            <option value="@BankRefund">Banka iade</option>
+                        </select>
+                    </label>
+                    @if (_settlement == BankRefund)
+                    {
+                        <label class="stack-field">
+                            <span class="field-label">Banka</span>
+                            @if (IsErp && Context.Banks.Count > 0)
+                            {
+                                <select class="portal-select" id="return-bank" value="@(_bankCode ?? string.Empty)" disabled="@Busy" @onchange="e => ChangedAsync(() => _bankCode = Blank(e.Value))">
+                                    <option value="">Seçin</option>
+                                    @foreach (var bank in Context.Banks)
+                                    {
+                                        <option value="@bank.Code">@bank.Code · @bank.Name</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <input class="portal-input" id="return-bank-name" maxlength="60" value="@_bankName" disabled="@Busy" @onchange="e => ChangedAsync(() => _bankName = Blank(e.Value))" />
+                            }
+                        </label>
+                    }
+                </div>
+
+                <EntryChecks Preview="Preview" Problem="@PreviewProblem" />
+                <EntryTotals Preview="Preview" />
+
+                <div class="form-actions">
+                    <span style="flex: 1"></span>
+                    <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" id="entry-save">Kaydet</MudButton>
+                </div>
+            </form>
+        </MudPaper>
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.EntryReturns;
+    protected override string Kind => EntryKinds.Return;
+
+    private const string OpenRefund = "Cari Alacak";
+    private const string BankRefund = "Banka İade";
+
+    private sealed class Line
+    {
+        public required EntryReturnableDto Product { get; init; }
+        public decimal UnitPrice { get; init; }
+        public decimal Quantity { get; set; } = 1;
+
+        /// <summary>The refunded share as the form shows it, 0–100; sent as 0–1.</summary>
+        public decimal ConditionPercent { get; set; } = 100;
+
+        public string? Reason { get; set; }
+    }
+
+    private EntryCustomerDto? _customer;
+    private List<EntryReturnableDto>? _returnables;
+    private string _filter = string.Empty;
+    private readonly List<Line> _lines = [];
+    private string _settlement = OpenRefund;
+    private string? _bankCode;
+    private string? _bankName;
+
+    private IEnumerable<EntryReturnableDto> Filtered => string.IsNullOrWhiteSpace(_filter)
+        ? _returnables ?? []
+        : (_returnables ?? []).Where(p => Contains(p.Name, _filter) || Contains(p.Code, _filter) || (p.Barcode?.Contains(_filter, StringComparison.OrdinalIgnoreCase) ?? false));
+
+    protected override bool Complete => _customer is not null && _lines.Count > 0;
+
+    protected override EntryRequestBase Build() => new EntryReturnRequest
+    {
+        CustomerCode = _customer?.Code ?? string.Empty,
+        SettlementMethod = _settlement,
+        BankCode = _settlement == BankRefund ? _bankCode : null,
+        BankName = _settlement == BankRefund ? _bankName : null,
+        Lines = [.. _lines.Select(l => new EntryReturnLineRequest
+        {
+            ProductCode = l.Product.Code,
+            Quantity = l.Quantity,
+            UnitPrice = l.UnitPrice,
+            ConditionPercent = l.ConditionPercent / 100,
+            Reason = l.Reason,
+        })],
+    };
+
+    protected override void ClearForm()
+    {
+        _customer = null;
+        _returnables = null;
+        _filter = string.Empty;
+        _lines.Clear();
+        _settlement = OpenRefund;
+        _bankCode = null;
+        _bankName = null;
+    }
+
+    protected override async Task OnContextAsync()
+    {
+        if (EntryQuery.Customer(Nav) is { } code && await EntryQuery.FindCustomerAsync(Api, code) is { } customer)
+            await CustomerPickedAsync(customer);
+    }
+
+    private async Task CustomerPickedAsync(EntryCustomerDto? customer)
+    {
+        _customer = customer;
+        _lines.Clear();
+        _returnables = null;
+        if (customer is not null) await RunAsync(async () => _returnables = (await Api.EntryReturnablesAsync(customer.Code)).Items);
+        await RefreshPreviewAsync();
+    }
+
+    private async Task AddAsync(EntryReturnableDto product, EntrySoldPriceDto price)
+    {
+        _lines.Add(new Line { Product = product, UnitPrice = price.UnitPrice });
+        await RefreshPreviewAsync();
+    }
+
+    private async Task RemoveAsync(Line line)
+    {
+        _lines.Remove(line);
+        await RefreshPreviewAsync();
+    }
+
+    private async Task ChangedAsync(Action change)
+    {
+        change();
+        await RefreshPreviewAsync();
+    }
+
+    private static bool Contains(string text, string query) =>
+        System.Globalization.CultureInfo.GetCultureInfo("tr-TR").CompareInfo.IndexOf(text, query, System.Globalization.CompareOptions.IgnoreCase) >= 0;
+
+    private static string? Blank(object? value) => string.IsNullOrWhiteSpace(value?.ToString()) ? null : value!.ToString()!.Trim();
+
+    private static string Number(decimal value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+}

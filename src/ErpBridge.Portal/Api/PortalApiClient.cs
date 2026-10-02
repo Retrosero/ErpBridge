@@ -616,6 +616,41 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<CatalogOrderConvertResponse> ConvertCatalogOrderAsync(Guid orderId, int? warehouseNo, decimal expectedTotal, CancellationToken ct = default) =>
         SendAsync<CatalogOrderConvertResponse>(HttpMethod.Post, $"{Catalog}orders/{orderId}/convert", new { warehouseNo, expectedTotal }, ct);
 
+    // ---- document entry (GOAL_PANEL_GIRIS) ------------------------------------
+
+    private const string Entry = "api/v1/portal/entry/";
+
+    /// <summary>What the entry pages offer this user: kinds, owners, price lists, ERP codes, expense cards and categories.</summary>
+    public Task<EntryContextDto> EntryContextAsync(CancellationToken ct = default) => GetAsync<EntryContextDto>(Entry + "context", ct);
+
+    public Task<EntryCustomersResponse> EntryCustomersAsync(string? q, CancellationToken ct = default) =>
+        GetAsync<EntryCustomersResponse>(Entry + "customers" + Query(("q", q), ("take", "20")), ct);
+
+    public Task<EntryProductsResponse> EntryProductsAsync(string? q, CancellationToken ct = default) =>
+        GetAsync<EntryProductsResponse>(Entry + "products" + Query(("q", q), ("take", "20")), ct);
+
+    /// <summary>What the customer was sold and at which prices: the only lines a return may take.</summary>
+    public Task<EntryReturnablesResponse> EntryReturnablesAsync(string customerCode, CancellationToken ct = default) =>
+        GetAsync<EntryReturnablesResponse>(Entry + "returnables" + Query(("customerCode", customerCode)), ct);
+
+    /// <summary>What the entry would write: priced lines, totals, and anything in the way. Writes nothing.</summary>
+    public Task<EntryPreviewDto> EntryPreviewAsync(string kind, EntryRequestBase request, CancellationToken ct = default) =>
+        SendAsync<EntryPreviewDto>(HttpMethod.Post, Entry + kind + "/preview", (object)request, ct);
+
+    /// <summary>
+    /// Saves the entry. <see cref="EntryRequestBase.OperationId"/> is the form's, kept until a definite answer: sending it
+    /// again after a lost answer returns the same document(s).
+    /// </summary>
+    public Task<EntryCreateResponse> EntrySaveAsync(string kind, EntryRequestBase request, CancellationToken ct = default) =>
+        SendAsync<EntryCreateResponse>(HttpMethod.Post, Entry + kind, (object)request, ct);
+
+    public Task<EntryDocumentDetailDto> EntryDocumentAsync(Guid jobId, CancellationToken ct = default) =>
+        GetAsync<EntryDocumentDetailDto>(Entry + "documents/" + jobId.ToString("D"), ct);
+
+    /// <summary>The panel entries, newest first: the user's own, or everyone's for an administrator who asks.</summary>
+    public Task<EntryDocumentsResponse> EntryDocumentsAsync(bool everyone, int page, CancellationToken ct = default) =>
+        GetAsync<EntryDocumentsResponse>(Entry + "documents" + Query(("all", everyone ? "true" : null), ("page", page.ToString(CultureInfo.InvariantCulture))), ct);
+
     // ---- plumbing ------------------------------------------------------------
 
     private Task<T> GetAsync<T>(string path, CancellationToken ct) => SendAsync<T>(HttpMethod.Get, path, null, ct);

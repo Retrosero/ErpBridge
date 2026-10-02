@@ -44,6 +44,30 @@ public enum PortalArea
     /// <c>action.storage.manage</c> (ADMIN and MANAGER).
     /// </summary>
     Storage,
+
+    /// <summary>Entering a sale from the panel (GOAL_PANEL_GIRIS): the phone's <c>module.sales</c>.</summary>
+    EntrySales,
+
+    /// <summary>Entering a collection: <c>module.collection</c>.</summary>
+    EntryCollection,
+
+    /// <summary>Entering a purchase: <c>module.purchase</c>.</summary>
+    EntryPurchase,
+
+    /// <summary>Entering a return: <c>module.returns</c>.</summary>
+    EntryReturns,
+
+    /// <summary>Entering a tediye: <c>module.disbursement</c>.</summary>
+    EntryDisbursement,
+
+    /// <summary>Entering an expense: <c>module.expenses</c>.</summary>
+    EntryExpenses,
+
+    /// <summary>The panel's entries list: open to whoever may enter any kind.</summary>
+    Entries,
+
+    /// <summary>Tasks and notifications (GOAL_PANEL_GIRIS P6): the phone's <c>module.tasks</c>.</summary>
+    Tasks,
 }
 
 /// <summary>Sellable add-ons a company may have (the server's <c>TenantModules</c>); the session carries the bought ones.</summary>
@@ -111,8 +135,19 @@ public static class PortalRoles
         PortalArea.Targets => "portal.targets",
         PortalArea.CustomerCatalog => "action.customer_catalog.manage",
         PortalArea.Storage => "action.storage.manage",
+        PortalArea.EntrySales => "module.sales",
+        PortalArea.EntryCollection => "module.collection",
+        PortalArea.EntryPurchase => "module.purchase",
+        PortalArea.EntryReturns => "module.returns",
+        PortalArea.EntryDisbursement => "module.disbursement",
+        PortalArea.EntryExpenses => "module.expenses",
+        PortalArea.Tasks => "module.tasks",
         _ => null,
     };
+
+    /// <summary>The entry areas, in the menu's order.</summary>
+    public static readonly IReadOnlyList<PortalArea> EntryAreas =
+        [PortalArea.EntrySales, PortalArea.EntryCollection, PortalArea.EntryPurchase, PortalArea.EntryReturns, PortalArea.EntryDisbursement, PortalArea.EntryExpenses];
 
     /// <summary>
     /// What the user's permissions open; a session without permissions (an older server, or a session saved
@@ -120,7 +155,9 @@ public static class PortalRoles
     /// MANAGER on the server, so another role stays out even if a permission said otherwise.
     /// </summary>
     public static bool Allows(IReadOnlyCollection<string> roles, IReadOnlyDictionary<string, bool>? permissions, PortalArea area) =>
-        (area is not (PortalArea.CustomerCatalog or PortalArea.Storage) || Allows(roles, area))
+        area == PortalArea.Entries
+            ? EntryAreas.Any(entry => Allows(roles, permissions, entry))
+            : (area is not (PortalArea.CustomerCatalog or PortalArea.Storage) || Allows(roles, area))
         && (permissions is not null && KeyOf(area) is { } key && permissions.TryGetValue(key, out var allowed)
             ? allowed
             : Allows(roles, area));
@@ -140,6 +177,10 @@ public static class PortalRoles
         PortalArea.Targets => roles.Any(r => r is Admin or Manager),
         PortalArea.CustomerCatalog => roles.Any(r => r is Admin or Manager),
         PortalArea.Storage => roles.Any(r => r is Admin or Manager),
+        // The phone modules' defaults (ADMIN, MANAGER, SALES); a sales user never reaches the panel.
+        PortalArea.EntrySales or PortalArea.EntryCollection or PortalArea.EntryPurchase or PortalArea.EntryReturns
+            or PortalArea.EntryDisbursement or PortalArea.EntryExpenses or PortalArea.Tasks => roles.Any(r => r is Admin or Manager),
+        PortalArea.Entries => EntryAreas.Any(entry => Allows(roles, entry)),
         _ => false,
     };
 

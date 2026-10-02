@@ -1,0 +1,215 @@
+@page "/giris/tahsilat"
+@inherits EntryPageBase
+
+<PageTitle>Tahsilat — Yönetim Paneli</PageTitle>
+
+@if (!Ready || Context is null)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Tahsilat" Eyebrow="Hızlı giriş" Subtitle="Nakit, kart, havale, çek ve senet; telefondaki gibi bölünebilir." Busy="Busy" />
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+    @if (Saved is { } saved)
+    {
+        <EntrySaved Kind="@Kind" Erp="IsErp" Documents="saved.Documents" OnNew="NewDocument" />
+    }
+    else
+    {
+        <MudPaper Outlined="true" Class="panel">
+            <form class="stack-form document-form" id="entry-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Busy" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
+                <CustomerPicker Label="Müşteri" Selected="_customer" Disabled="Busy" Picked="CustomerPickedAsync" />
+
+                @foreach (var payment in _payments)
+                {
+                    <fieldset class="entry-payment" data-method="@payment.Method">
+                        <legend class="field-label">@MethodLabel(payment.Method)</legend>
+                        <div class="form-row">
+                            <label class="stack-field">
+                                <span class="field-label">Tutar</span>
+                                <input type="number" class="portal-input portal-input--number payment-amount" min="0" step="any" value="@Number(payment.Amount)" disabled="@Busy"
+                                       @onchange="e => ChangedAsync(() => payment.Amount = ParseDecimal(e.Value) ?? 0)" />
+                            </label>
+                            @if (payment.Method is "card" or "transfer")
+                            {
+                                @if (IsErp && Context.Banks.Count > 0)
+                                {
+                                    <label class="stack-field">
+                                        <span class="field-label">Banka</span>
+                                        <select class="portal-select payment-bank" value="@(payment.BankCode ?? string.Empty)" disabled="@Busy"
+                                                @onchange="e => ChangedAsync(() => payment.BankCode = Blank(e.Value))">
+                                            <option value="">Varsayılan</option>
+                                            @foreach (var bank in Context.Banks)
+                                            {
+                                                <option value="@bank.Code">@bank.Code · @bank.Name</option>
+                                            }
+                                        </select>
+                                    </label>
+                                }
+                                else
+                                {
+                                    <label class="stack-field">
+                                        <span class="field-label">Banka</span>
+                                        <input class="portal-input payment-bank-name" value="@payment.BankName" maxlength="60" disabled="@Busy" @onchange="e => ChangedAsync(() => payment.BankName = Blank(e.Value))" />
+                                    </label>
+                                }
+                                <label class="stack-field">
+                                    <span class="field-label">@(payment.Method == "card" ? "Slip no" : "Dekont no")</span>
+                                    <input class="portal-input payment-reference" value="@payment.Reference" maxlength="40" disabled="@Busy" @onchange="e => ChangedAsync(() => payment.Reference = Blank(e.Value))" />
+                                </label>
+                            }
+                            @if (payment.Method == "card")
+                            {
+                                <label class="stack-field">
+                                    <span class="field-label">Taksit</span>
+                                    <input type="number" class="portal-input portal-input--number payment-installments" min="1" max="36" step="1" value="@(payment.Installments ?? 1)" disabled="@Busy"
+                                           @onchange="e => ChangedAsync(() => payment.Installments = (int?)ParseDecimal(e.Value))" />
+                                </label>
+                                <label class="stack-field">
+                                    <span class="field-label">Vade farkı</span>
+                                    <input type="number" class="portal-input portal-input--number payment-surcharge" min="0" step="any" value="@(payment.Surcharge is { } s ? Number(s) : string.Empty)" disabled="@Busy"
+                                           @onchange="e => ChangedAsync(() => payment.Surcharge = ParseDecimal(e.Value))" />
+                                </label>
+                            }
+                            @if (payment.Method is "cheque" or "note")
+                            {
+                                <label class="stack-field">
+                                    <span class="field-label">@(payment.Method == "cheque" ? "Çek no" : "Senet no")</span>
+                                    <input class="portal-input payment-document-no" value="@payment.DocumentNo" maxlength="40" disabled="@Busy" @onchange="e => ChangedAsync(() => payment.DocumentNo = Blank(e.Value))" />
+                                </label>
+                                <label class="stack-field">
+                                    <span class="field-label">Vade</span>
+                                    <input type="date" class="portal-input payment-due" value="@payment.DueDate" disabled="@Busy" @onchange="e => ChangedAsync(() => payment.DueDate = Blank(e.Value))" />
+                                </label>
+                                @if (payment.Method == "cheque")
+                                {
+                                    <label class="stack-field">
+                                        <span class="field-label">Çekin bankası</span>
+                                        <input class="portal-input payment-bank-name" value="@payment.BankName" maxlength="60" disabled="@Busy" @onchange="e => ChangedAsync(() => payment.BankName = Blank(e.Value))" />
+                                    </label>
+                                }
+                            }
+                            <MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Class="payment-remove" aria-label="Ödemeyi çıkar" Disabled="Busy" OnClick="() => RemoveAsync(payment)" />
+                        </div>
+                    </fieldset>
+                }
+
+                <div class="entry-add-payment" id="collection-add">
+                    <span class="field-label">Ödeme ekle</span>
+                    @foreach (var (method, label) in Methods)
+                    {
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="() => AddAsync(method)" id="@("collection-add-" + method)">@label</MudButton>
+                    }
+                </div>
+
+                <label class="stack-field">
+                    <span class="field-label">Açıklama</span>
+                    <textarea class="portal-input" id="collection-description" rows="2" maxlength="500" disabled="@Busy" @onchange="e => ChangedAsync(() => _description = Blank(e.Value))">@_description</textarea>
+                </label>
+
+                <EntryChecks Preview="Preview" Problem="@PreviewProblem" />
+                <EntryTotals Preview="Preview" />
+
+                <div class="form-actions">
+                    <span style="flex: 1"></span>
+                    <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" id="entry-save">Kaydet</MudButton>
+                </div>
+            </form>
+        </MudPaper>
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.EntryCollection;
+    protected override string Kind => EntryKinds.Collection;
+
+    private static readonly (string Method, string Label)[] Methods =
+        [("cash", "Nakit"), ("card", "Kredi Kartı"), ("transfer", "Havale / EFT"), ("cheque", "Çek"), ("note", "Senet")];
+
+    private sealed class Payment
+    {
+        public required string Method { get; init; }
+        public decimal Amount { get; set; }
+        public string? BankCode { get; set; }
+        public string? BankName { get; set; }
+        public int? Installments { get; set; }
+        public decimal? Surcharge { get; set; }
+        public string? Reference { get; set; }
+        public string? DocumentNo { get; set; }
+        public string? DueDate { get; set; }
+    }
+
+    private EntryCustomerDto? _customer;
+    private readonly List<Payment> _payments = [new() { Method = "cash" }];
+    private string? _description;
+
+    protected override bool Complete => _customer is not null && _payments.Count > 0 && _payments.All(p => p.Amount > 0);
+
+    protected override EntryRequestBase Build() => new EntryCollectionRequest
+    {
+        CustomerCode = _customer?.Code ?? string.Empty,
+        Description = _description,
+        Payments = [.. _payments.Select(p => new EntryPaymentRequest
+        {
+            Method = p.Method,
+            Amount = p.Amount,
+            BankCode = p.BankCode,
+            BankName = p.BankName,
+            Installments = p.Method == "card" ? p.Installments : null,
+            SurchargeAmount = p.Method == "card" ? p.Surcharge : null,
+            Reference = p.Reference,
+            DocumentNo = p.DocumentNo,
+            DueDate = p.DueDate,
+        })],
+    };
+
+    protected override void ClearForm()
+    {
+        _customer = null;
+        _payments.Clear();
+        _payments.Add(new Payment { Method = "cash" });
+        _description = null;
+    }
+
+    protected override async Task OnContextAsync()
+    {
+        if (EntryQuery.Customer(Nav) is { } code) _customer = await EntryQuery.FindCustomerAsync(Api, code);
+    }
+
+    private static string MethodLabel(string method) => Methods.FirstOrDefault(m => m.Method == method).Label ?? method;
+
+    private async Task CustomerPickedAsync(EntryCustomerDto? customer)
+    {
+        _customer = customer;
+        await RefreshPreviewAsync();
+    }
+
+    private async Task AddAsync(string method)
+    {
+        _payments.Add(new Payment { Method = method });
+        await RefreshPreviewAsync();
+    }
+
+    private async Task RemoveAsync(Payment payment)
+    {
+        _payments.Remove(payment);
+        await RefreshPreviewAsync();
+    }
+
+    private async Task ChangedAsync(Action change)
+    {
+        change();
+        await RefreshPreviewAsync();
+    }
+
+    private static string? Blank(object? value) => string.IsNullOrWhiteSpace(value?.ToString()) ? null : value!.ToString()!.Trim();
+
+    private static string Number(decimal value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+}

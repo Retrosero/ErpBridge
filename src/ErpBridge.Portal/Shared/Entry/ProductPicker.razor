@@ -1,0 +1,80 @@
+@namespace ErpBridge.Portal.Shared.Entry
+@inject PortalApiClient Api
+
+<div class="document-search">
+    <input class="portal-input" id="entry-product-search" placeholder="Ürün kodu, adı ya da barkod" value="@_query" disabled="@Disabled"
+           @onchange="e => _query = e.Value?.ToString() ?? string.Empty" @onkeydown="SearchOnEnterAsync" />
+    <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@(Disabled || _searching)" OnClick="SearchAsync" id="entry-product-search-go">Ara</MudButton>
+</div>
+@if (_problem is not null)
+{
+    <span class="field-hint field-hint--warn">@_problem</span>
+}
+@if (_results.Count > 0)
+{
+    <ul class="pick-list" id="entry-product-results">
+        @foreach (var found in _results)
+        {
+            <li>
+                <button type="button" class="pick-item" data-product="@found.Code" @onclick="() => PickAsync(found)">
+                    <span class="cell-title">@found.Name</span>
+                    <span class="cell-sub">@found.Code · @Fmt.Quantity(found.Stock) stokta@(PriceText(found))</span>
+                </button>
+            </li>
+        }
+    </ul>
+}
+else if (_searched)
+{
+    <span class="field-hint" id="entry-product-none">Eşleşen ürün yok.</span>
+}
+
+@code {
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>The list whose price the results show; null = each product's own.</summary>
+    [Parameter] public int? PriceListNo { get; set; }
+
+    [Parameter] public EventCallback<EntryProductDto> Picked { get; set; }
+
+    private string _query = string.Empty;
+    private List<EntryProductDto> _results = [];
+    private bool _searched;
+    private bool _searching;
+    private string? _problem;
+
+    private string PriceText(EntryProductDto product) =>
+        (PriceListNo ?? product.DefaultPriceListNo) is { } list && product.Prices.TryGetValue(list, out var price) ? " · " + Fmt.Money(price) : " · fiyat yok";
+
+    private async Task SearchOnEnterAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _searching = true;
+        _problem = null;
+        try
+        {
+            _results = (await Api.EntryProductsAsync(_query)).Items;
+            _searched = true;
+        }
+        catch (Exception ex) when (ex is PortalApiException or HttpRequestException or TaskCanceledException)
+        {
+            _problem = ex is PortalApiException api ? api.Message : "Sunucuya ulaşılamadı.";
+        }
+        finally
+        {
+            _searching = false;
+        }
+    }
+
+    private async Task PickAsync(EntryProductDto product)
+    {
+        _results = [];
+        _searched = false;
+        _query = string.Empty;
+        await Picked.InvokeAsync(product);
+    }
+}

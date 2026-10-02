@@ -1,0 +1,181 @@
+@page "/giris/alis"
+@inherits EntryPageBase
+
+<PageTitle>Alış — Yönetim Paneli</PageTitle>
+
+@if (!Ready || Context is null)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Alış" Eyebrow="Hızlı giriş" Subtitle="Tedarikçi faturası; telefondaki gibi peşin (kapalı fatura) yazılır." Busy="Busy" />
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+    @if (Saved is { } saved)
+    {
+        <EntrySaved Kind="@Kind" Erp="IsErp" Documents="saved.Documents" OnNew="NewDocument" />
+    }
+    else
+    {
+        <MudPaper Outlined="true" Class="panel">
+            <form class="stack-form document-form" id="entry-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Busy" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
+                <CustomerPicker Label="Tedarikçi" Selected="_supplier" Disabled="Busy" Picked="SupplierPickedAsync" />
+
+                <div class="form-row">
+                    <label class="stack-field">
+                        <span class="field-label">Seri</span>
+                        <input class="portal-input" id="purchase-series" maxlength="20" value="@_series" disabled="@Busy" @onchange="e => ChangedAsync(() => _series = Blank(e.Value))" />
+                    </label>
+                    <label class="stack-field">
+                        <span class="field-label">Sıra no</span>
+                        <input class="portal-input" id="purchase-sequence" maxlength="30" value="@_sequence" disabled="@Busy" @onchange="e => ChangedAsync(() => _sequence = Blank(e.Value))" />
+                    </label>
+                    <label class="stack-field">
+                        <span class="field-label">Genel iskontolar %</span>
+                        <input class="portal-input" id="purchase-general-discounts" placeholder="ör. 5 + 2" value="@Chain(_generalDiscounts)" disabled="@Busy"
+                               @onchange="e => ChangedAsync(() => _generalDiscounts = ParseChain(e.Value))" />
+                    </label>
+                </div>
+
+                <div class="stack-field">
+                    <span class="field-label">Kalemler</span>
+                    <ProductPicker Disabled="Busy" Picked="ProductPickedAsync" />
+                    @if (_lines.Count > 0)
+                    {
+                        <div class="table-scroll">
+                            <table class="data-table detail-lines" id="purchase-lines">
+                                <thead>
+                                    <tr>
+                                        <th>Ürün</th>
+                                        <th class="num">Miktar</th>
+                                        <th class="num">Birim fiyat (KDV hariç)</th>
+                                        <th class="num">Satır isk. %</th>
+                                        <th class="num">KDV</th>
+                                        <th class="num">Tutar</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (var i = 0; i < _lines.Count; i++)
+                                    {
+                                        var line = _lines[i];
+                                        var priced = Preview?.Lines.ElementAtOrDefault(i);
+                                        <tr data-line="@line.Product.Code">
+                                            <td class="cell-title">@line.Product.Name<div class="cell-sub">@line.Product.Code</div></td>
+                                            <td class="num"><input type="number" class="portal-input portal-input--number line-quantity" min="1" step="1" value="@Number(line.Quantity)" disabled="@Busy"
+                                                                   @onchange="e => ChangedAsync(() => line.Quantity = ParseDecimal(e.Value) ?? line.Quantity)" /></td>
+                                            <td class="num"><input type="number" class="portal-input portal-input--number line-price" min="0" step="any" value="@Number(line.UnitPrice)" disabled="@Busy"
+                                                                   @onchange="e => ChangedAsync(() => line.UnitPrice = ParseDecimal(e.Value) ?? line.UnitPrice)" /></td>
+                                            <td class="num"><input class="portal-input line-discounts" placeholder="ör. 5 + 2" value="@Chain(line.Discounts)" disabled="@Busy"
+                                                                   @onchange="e => ChangedAsync(() => line.Discounts = ParseChain(e.Value))" /></td>
+                                            <td class="num">@(priced is null ? "—" : Fmt.Money(priced.Vat))</td>
+                                            <td class="num line-total">@(priced is null ? "—" : Fmt.Money(priced.Total))</td>
+                                            <td><MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Class="line-remove" aria-label="Kalemi çıkar" Disabled="Busy" OnClick="() => RemoveAsync(line)" /></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+
+                <EntryChecks Preview="Preview" Problem="@PreviewProblem" />
+                <EntryTotals Preview="Preview" />
+
+                <div class="form-actions">
+                    <span style="flex: 1"></span>
+                    <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" id="entry-save">Kaydet</MudButton>
+                </div>
+            </form>
+        </MudPaper>
+    }
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.EntryPurchase;
+    protected override string Kind => EntryKinds.Purchase;
+
+    private sealed class Line
+    {
+        public required EntryProductDto Product { get; init; }
+        public decimal Quantity { get; set; } = 1;
+        public decimal UnitPrice { get; set; }
+        public List<decimal> Discounts { get; set; } = [];
+    }
+
+    private EntryCustomerDto? _supplier;
+    private string? _series;
+    private string? _sequence;
+    private List<decimal> _generalDiscounts = [];
+    private readonly List<Line> _lines = [];
+
+    protected override bool Complete => _supplier is not null && _lines.Count > 0;
+
+    protected override EntryRequestBase Build() => new EntryPurchaseRequest
+    {
+        SupplierCode = _supplier?.Code ?? string.Empty,
+        Series = _series,
+        SequenceNo = _sequence,
+        GeneralDiscountPercents = _generalDiscounts,
+        Lines = [.. _lines.Select(l => new EntryPurchaseLineRequest { ProductCode = l.Product.Code, Quantity = l.Quantity, UnitPrice = l.UnitPrice, LineDiscountPercents = l.Discounts })],
+    };
+
+    protected override void ClearForm()
+    {
+        _supplier = null;
+        _series = null;
+        _sequence = null;
+        _generalDiscounts = [];
+        _lines.Clear();
+    }
+
+    protected override async Task OnContextAsync()
+    {
+        if (EntryQuery.Customer(Nav) is { } code) _supplier = await EntryQuery.FindCustomerAsync(Api, code);
+    }
+
+    private async Task SupplierPickedAsync(EntryCustomerDto? supplier)
+    {
+        _supplier = supplier;
+        await RefreshPreviewAsync();
+    }
+
+    /// <summary>A new line starts at the product's headline list price, without VAT; the supplier's price is typed over it.</summary>
+    private async Task ProductPickedAsync(EntryProductDto product)
+    {
+        var price = product.DefaultPriceListNo is { } list && product.Prices.TryGetValue(list, out var listPrice) ? listPrice : 0;
+        var includesVat = Context!.PriceLists.FirstOrDefault(l => l.No == product.DefaultPriceListNo)?.IncludesVat == true;
+        _lines.Add(new Line { Product = product, UnitPrice = includesVat && product.VatRate > 0 ? Math.Round(price / (1 + product.VatRate / 100), 2, MidpointRounding.AwayFromZero) : price });
+        await RefreshPreviewAsync();
+    }
+
+    private async Task RemoveAsync(Line line)
+    {
+        _lines.Remove(line);
+        await RefreshPreviewAsync();
+    }
+
+    private async Task ChangedAsync(Action change)
+    {
+        change();
+        await RefreshPreviewAsync();
+    }
+
+    /// <summary>"5 + 2", "5,2" or "5 2" → [5, 2]; the server checks the limits (at most 6, each 0–100).</summary>
+    private static List<decimal> ParseChain(object? value) =>
+        [.. (value?.ToString() ?? string.Empty).Split(['+', ';', ' ', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(part => decimal.TryParse(part.Replace(',', '.'), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var p) ? p : -1)
+            .Where(p => p != 0)];
+
+    private static string Chain(IReadOnlyList<decimal> percents) => string.Join(" + ", percents.Select(Number));
+
+    private static string? Blank(object? value) => string.IsNullOrWhiteSpace(value?.ToString()) ? null : value!.ToString()!.Trim();
+
+    private static string Number(decimal value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+}

@@ -1,0 +1,168 @@
+@page "/giris-yazdir"
+@layout PrintLayout
+@inherits PortalPageBase
+@using System.Text.Json
+
+<PageTitle>@(_document?.ErpDocumentNo ?? "Belge") — Yazdır</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else if (Error is not null)
+{
+    <p class="print-error" id="page-error">@Error</p>
+}
+else if (_document is { } document)
+{
+    var payload = document.Payload;
+    <div class="print-actions no-print">
+        <button type="button" class="print-button" id="print-now" onclick="window.print()">Yazdır</button>
+        <button type="button" class="print-button print-button--plain" onclick="window.close()">Kapat</button>
+    </div>
+
+    <article class="print-document" id="print-document" data-kind="@document.Kind">
+        <header class="print-head">
+            <div>
+                <div class="print-company">@Session.TenantName</div>
+                <h1 class="print-title" id="print-title">@Title(document.Kind)</h1>
+            </div>
+            <dl class="print-facts">
+                <dt>Belge no</dt><dd id="print-number">@(document.ErpDocumentNo ?? document.ExternalId)</dd>
+                <dt>Tarih</dt><dd>@Text(payload, "occurredAt")</dd>
+                <dt>Ödeme</dt><dd>@(Text(payload, "settlementMethod") ?? Text(payload, "paymentType") ?? "—")</dd>
+            </dl>
+        </header>
+
+        <section class="print-party">
+            <span class="print-label">@(document.Kind is "purchase" or "disbursement" ? "Ödenen / tedarikçi" : "Sayın")</span>
+            <strong id="print-party">@(Text(payload, "counterparty") ?? document.CustomerName)</strong>
+            <span class="print-code">@(Text(payload, "customerCode") ?? Text(payload, "supplierCode"))</span>
+        </section>
+
+        @if (payload.TryGetProperty("lines", out var lines) && lines.ValueKind == JsonValueKind.Array && lines.GetArrayLength() > 0)
+        {
+            <table class="print-lines" id="print-lines">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Kod</th>
+                        <th>Ürün</th>
+                        <th class="num">Miktar</th>
+                        <th class="num">Birim fiyat</th>
+                        <th class="num">Tutar (KDV hariç)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @{ var i = 0; }
+                    @foreach (var line in lines.EnumerateArray())
+                    {
+                        i++;
+                        <tr>
+                            <td>@i</td>
+                            <td>@Text(line, "productCode")</td>
+                            <td>@(Text(line, "productTitle") ?? Text(line, "reason") ?? "—")</td>
+                            <td class="num">@Fmt.Quantity(Number(line, "quantity") ?? 0)</td>
+                            <td class="num">@Fmt.Money(Number(line, "unitPrice") ?? 0)</td>
+                            <td class="num">@Fmt.Money(Number(line, "lineTotal") ?? (Number(line, "unitPrice") ?? 0) * (Number(line, "quantity") ?? 0))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        @if (payload.TryGetProperty("payments", out var payments) && payments.ValueKind == JsonValueKind.Array && payments.GetArrayLength() > 0)
+        {
+            <table class="print-lines" id="print-payments">
+                <thead><tr><th>Ödeme</th><th>Ayrıntı</th><th class="num">Tutar</th></tr></thead>
+                <tbody>
+                    @foreach (var payment in payments.EnumerateArray())
+                    {
+                        <tr>
+                            <td>@MethodText(Text(payment, "method"))</td>
+                            <td>@PaymentDetail(payment)</td>
+                            <td class="num">@Fmt.Money(Number(payment, "amount") ?? 0)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        <footer class="print-foot">
+            @if (Text(payload, "description") is { } description)
+            {
+                <p class="print-note">@description</p>
+            }
+            @if (document.Kind == "sale")
+            {
+                <p class="print-note">Bu belge fatura yerine geçmez.</p>
+            }
+            <div class="print-total">
+                <span>@(document.Kind == "purchase" ? "Genel toplam (KDV hariç)" : "Genel toplam")</span>
+                <strong id="print-total">@Fmt.Money(document.Amount ?? 0)</strong>
+            </div>
+            <p class="print-note">@(document.OwnerName is { } owner ? owner + " adına · " : string.Empty)Giren: @(document.EnteredBy ?? "—")</p>
+        </footer>
+    </article>
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Entries;
+
+    private Guid? _jobId;
+    private EntryDocumentDetailDto? _document;
+
+    protected override void OnInitialized()
+    {
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        _jobId = query.TryGetValue("is", out var id) && Guid.TryParse(id[^1], out var parsed) ? parsed : null;
+    }
+
+    protected override async Task LoadAsync()
+    {
+        if (_jobId is not { } id)
+        {
+            Error = "Yazdırılacak belge seçilmedi.";
+            return;
+        }
+        _document = await Api.EntryDocumentAsync(id);
+    }
+
+    /// <summary>The phone's slip titles (Sipariş Cepte <c>ItemSlip</c>, <c>ReceiptDialog</c>).</summary>
+    private static string Title(string kind) => kind switch
+    {
+        "sale" => "Satış / Sipariş",
+        "collection" => "Tahsilat Makbuzu",
+        "disbursement" => "Tediye Makbuzu",
+        "return" => "İade",
+        "purchase" => "Alış",
+        _ => "Belge",
+    };
+
+    private static string MethodText(string? method) => method switch
+    {
+        "cash" => "Nakit",
+        "card" => "Kredi Kartı",
+        "transfer" => "Havale / EFT",
+        "cheque" => "Çek",
+        "note" => "Senet",
+        _ => method ?? "—",
+    };
+
+    private static string PaymentDetail(JsonElement payment)
+    {
+        var parts = new List<string>();
+        if (Number(payment, "installments") is { } installments && installments > 1) parts.Add($"{installments:0} taksit");
+        if (payment.TryGetProperty("cheque", out var cheque) && Text(cheque, "no") is { } chequeNo) parts.Add("No: " + chequeNo);
+        if (payment.TryGetProperty("note", out var note) && Text(note, "no") is { } noteNo) parts.Add("No: " + noteNo);
+        if (Text(payment, "dueDate") is { } due) parts.Add("Vade: " + due);
+        return parts.Count == 0 ? "—" : string.Join(" · ", parts);
+    }
+
+    private static string? Text(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(value.GetString()) ? value.GetString() : null;
+
+    private static decimal? Number(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)
+            ? number : null;
+}

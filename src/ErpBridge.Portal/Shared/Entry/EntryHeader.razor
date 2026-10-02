@@ -1,0 +1,37 @@
+@namespace ErpBridge.Portal.Shared.Entry
+@* GOAL_PANEL_GIRIS K5/K6: whose document it is (an ERP company's agent writes it with that person's mapping) and its date
+   (any past day, never a future one). *@
+
+<div class="form-row entry-header">
+    @if (Context.Owners.Count > 1)
+    {
+        <label class="stack-field">
+            <span class="field-label">Kimin adına</span>
+            <select class="portal-select" id="entry-owner" value="@(OwnerUserId?.ToString() ?? string.Empty)" disabled="@Disabled"
+                    @onchange="e => OwnerChanged.InvokeAsync(e.Value?.ToString())">
+                @foreach (var owner in Context.Owners)
+                {
+                    <option value="@(owner.IsSelf ? string.Empty : owner.UserId.ToString())">@owner.Name@(owner.IsSelf ? " (siz)" : string.Empty)</option>
+                }
+            </select>
+            @if (Context.IsErp)
+            {
+                <span class="field-hint">ERP'de seri, depo ve plasiyer bu kişinin Mikro eşlemesinden alınır.</span>
+            }
+        </label>
+    }
+    <label class="stack-field">
+        <span class="field-label">Belge tarihi</span>
+        <input type="date" class="portal-input" id="entry-date" max="@Context.Today" value="@Date" disabled="@Disabled"
+               @onchange="e => DateChanged.InvokeAsync(e.Value?.ToString())" />
+    </label>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public EntryContextDto Context { get; set; } = default!;
+    [Parameter] public Guid? OwnerUserId { get; set; }
+    [Parameter] public string Date { get; set; } = string.Empty;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<string?> OwnerChanged { get; set; }
+    [Parameter] public EventCallback<string?> DateChanged { get; set; }
+}
