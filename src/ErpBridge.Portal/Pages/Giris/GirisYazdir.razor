@@ -64,7 +64,7 @@ else if (_document is { } document)
                             <td>@(Text(line, "productTitle") ?? Text(line, "reason") ?? "—")</td>
                             <td class="num">@Fmt.Quantity(Number(line, "quantity") ?? 0)</td>
                             <td class="num">@Fmt.Money(Number(line, "unitPrice") ?? 0)</td>
-                            <td class="num">@Fmt.Money(Number(line, "lineTotal") ?? (Number(line, "unitPrice") ?? 0) * (Number(line, "quantity") ?? 0))</td>
+                            <td class="num">@Fmt.Money(LineTotal(line))</td>
                         </tr>
                     }
                 </tbody>
@@ -96,8 +96,16 @@ else if (_document is { } document)
             {
                 <p class="print-note">Bu belge fatura yerine geçmez.</p>
             }
+            @if (document.Kind == "purchase" && Number(payload, "vatAmount") is { } vat)
+            {
+                <div class="print-total print-total--part">
+                    <span>KDV</span>
+                    <strong id="print-vat">@Fmt.Money(vat)</strong>
+                </div>
+            }
             <div class="print-total">
-                <span>@(document.Kind == "purchase" ? "Genel toplam (KDV hariç)" : "Genel toplam")</span>
+                @* A purchase's amount here is what was paid: its VAT-inclusive gross (Codex #251, #252). *@
+                <span>@(document.Kind == "purchase" ? "Genel toplam (KDV dahil)" : "Genel toplam")</span>
                 <strong id="print-total">@Fmt.Money(document.Amount ?? 0)</strong>
             </div>
             <p class="print-note">@(document.OwnerName is { } owner ? owner + " adına · " : string.Empty)Giren: @(document.EnteredBy ?? "—")</p>
@@ -156,6 +164,17 @@ else if (_document is { } document)
         if (payment.TryGetProperty("note", out var note) && Text(note, "no") is { } noteNo) parts.Add("No: " + noteNo);
         if (Text(payment, "dueDate") is { } due) parts.Add("Vade: " + due);
         return parts.Count == 0 ? "—" : string.Join(" · ", parts);
+    }
+
+    /// <summary>
+    /// The line's VAT-exclusive amount: as written, or for an ERP return (whose lines carry no total) the refunded share of
+    /// the sold price — <c>PanelEntryLines.ReturnPrice</c>: the gross less the part kept (Codex #252).
+    /// </summary>
+    private static decimal LineTotal(JsonElement line)
+    {
+        if (Number(line, "lineTotal") is { } total) return total;
+        var gross = Math.Round((Number(line, "unitPrice") ?? 0) * (Number(line, "quantity") ?? 0), 2, MidpointRounding.AwayFromZero);
+        return Number(line, "conditionPercent") is { } condition ? gross - Math.Round(gross * (1 - condition), 2, MidpointRounding.AwayFromZero) : gross;
     }
 
     private static string? Text(JsonElement element, string name) =>

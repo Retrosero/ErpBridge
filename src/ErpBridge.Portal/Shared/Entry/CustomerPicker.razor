@@ -15,7 +15,7 @@
     {
         <div class="document-search">
             <input class="portal-input" id="entry-customer-search" placeholder="Kod, unvan ya da telefon" value="@_query" disabled="@Disabled"
-                   @onchange="e => _query = e.Value?.ToString() ?? string.Empty" @onkeydown="SearchOnEnterAsync" />
+                   @oninput="e => _query = e.Value?.ToString() ?? string.Empty" @onkeydown="SearchOnEnterAsync" />
             <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@(Disabled || _searching)" OnClick="SearchAsync" id="entry-customer-search-go">Ara</MudButton>
         </div>
         @if (_problem is not null)

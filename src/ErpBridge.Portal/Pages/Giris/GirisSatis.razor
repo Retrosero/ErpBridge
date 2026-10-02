@@ -15,6 +15,7 @@ else
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
     }
+    <EntryUnsettled Shown="Unsettled" />
     @if (Saved is { } saved)
     {
         <EntrySaved Kind="@Kind" Erp="IsErp" Documents="saved.Documents" OnNew="NewDocument" />
@@ -22,15 +23,16 @@ else
     else
     {
         <MudPaper Outlined="true" Class="panel">
-            <form class="stack-form document-form" id="entry-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
-                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Busy" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
+            @* Not a <form>: Enter in a field — a search above all — must never save the document; only Kaydet saves (Codex #252). *@
+            <div class="stack-form document-form" id="entry-form">
+                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Locked" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
 
-                <CustomerPicker Label="Müşteri" Selected="_customer" Disabled="Busy" Picked="CustomerPickedAsync" />
+                <CustomerPicker Label="Müşteri" Selected="_customer" Disabled="Locked" Picked="CustomerPickedAsync" />
 
                 <div class="form-row">
                     <label class="stack-field">
                         <span class="field-label">Fiyat listesi</span>
-                        <select class="portal-select" id="sale-price-list" value="@(_priceListNo?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty)" disabled="@Busy"
+                        <select class="portal-select" id="sale-price-list" value="@(_priceListNo?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty)" disabled="@Locked"
                                 @onchange="PriceListChangedAsync">
                             <option value="">Ürünün kendi listesi</option>
                             @foreach (var list in Context.PriceLists)
@@ -41,7 +43,7 @@ else
                     </label>
                     <label class="stack-field">
                         <span class="field-label">Ödeme</span>
-                        <select class="portal-select" id="sale-payment" value="@_paymentType" disabled="@Busy" @onchange="PaymentChangedAsync">
+                        <select class="portal-select" id="sale-payment" value="@_paymentType" disabled="@Locked" @onchange="PaymentChangedAsync">
                             @if (Context.CanSellOnAccount)
                             {
                                 <option value="Cari Borç">Cari Borç</option>
@@ -54,7 +56,7 @@ else
                     {
                         <label class="stack-field">
                             <span class="field-label">Kart bankası</span>
-                            <select class="portal-select" id="sale-bank" value="@(_bankCode ?? string.Empty)" disabled="@Busy" @onchange="BankChangedAsync">
+                            <select class="portal-select" id="sale-bank" value="@(_bankCode ?? string.Empty)" disabled="@Locked" @onchange="BankChangedAsync">
                                 <option value="">Seçin</option>
                                 @foreach (var bank in Context.Banks)
                                 {
@@ -66,13 +68,13 @@ else
                     <label class="stack-field">
                         <span class="field-label">Genel iskonto %</span>
                         <input type="number" class="portal-input portal-input--number" id="sale-general-discount" min="0" max="100" step="any"
-                               value="@Number(_generalDiscount)" disabled="@Busy" @onchange="GeneralDiscountChangedAsync" />
+                               value="@Number(_generalDiscount)" disabled="@Locked" @onchange="GeneralDiscountChangedAsync" />
                     </label>
                 </div>
 
                 <div class="stack-field">
                     <span class="field-label">Kalemler</span>
-                    <ProductPicker Disabled="Busy" PriceListNo="_priceListNo" Picked="ProductPickedAsync" />
+                    <ProductPicker Disabled="Locked" PriceListNo="_priceListNo" Picked="ProductPickedAsync" />
                     @if (_lines.Count > 0)
                     {
                         <div class="table-scroll">
@@ -95,14 +97,14 @@ else
                                         var priced = Preview?.Lines.ElementAtOrDefault(i);
                                         <tr data-line="@line.Product.Code">
                                             <td class="cell-title">@line.Product.Name<div class="cell-sub">@line.Product.Code@(line.Product.Unit is { } unit ? " · " + unit : string.Empty)</div></td>
-                                            <td class="num"><input type="number" class="portal-input portal-input--number line-quantity" min="1" step="1" value="@Number(line.Quantity)" disabled="@Busy"
+                                            <td class="num"><input type="number" class="portal-input portal-input--number line-quantity" min="1" step="1" value="@Number(line.Quantity)" disabled="@Locked"
                                                                    @onchange="e => LineChangedAsync(() => line.Quantity = ParseDecimal(e.Value) ?? line.Quantity)" /></td>
                                             <td class="num">@(priced is null ? "—" : Fmt.Money(priced.ListUnitPrice))</td>
-                                            <td class="num"><input type="number" class="portal-input portal-input--number line-discount" min="0" max="100" step="any" value="@Number(line.Discount)" disabled="@Busy"
+                                            <td class="num"><input type="number" class="portal-input portal-input--number line-discount" min="0" max="100" step="any" value="@Number(line.Discount)" disabled="@Locked"
                                                                    @onchange="e => LineChangedAsync(() => line.Discount = Math.Clamp(ParseDecimal(e.Value) ?? 0, 0, 100))" /></td>
                                             <td class="num">@(priced is null ? "—" : Fmt.Money(priced.Vat))</td>
                                             <td class="num line-total">@(priced is null ? "—" : Fmt.Money(priced.Total))</td>
-                                            <td><MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Class="line-remove" aria-label="Kalemi çıkar" Disabled="Busy" OnClick="() => RemoveLineAsync(line)" /></td>
+                                            <td><MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Class="line-remove" aria-label="Kalemi çıkar" Disabled="Locked" OnClick="() => RemoveLineAsync(line)" /></td>
                                         </tr>
                                     }
                                 </tbody>
@@ -113,7 +115,7 @@ else
 
                 <label class="stack-field">
                     <span class="field-label">Not</span>
-                    <textarea class="portal-input" id="sale-note" rows="2" maxlength="500" disabled="@Busy" @onchange="NoteChangedAsync">@_note</textarea>
+                    <textarea class="portal-input" id="sale-note" rows="2" maxlength="500" disabled="@Locked" @onchange="NoteChangedAsync">@_note</textarea>
                 </label>
 
                 <EntryChecks Preview="Preview" Problem="@PreviewProblem" />
@@ -121,10 +123,10 @@ else
 
                 <div class="form-actions">
                     <span style="flex: 1"></span>
-                    <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
-                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" id="entry-save">Kaydet</MudButton>
+                    <MudButton Variant="Variant.Text" Disabled="@Locked" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" OnClick="SaveAsync" id="entry-save">Kaydet</MudButton>
                 </div>
-            </form>
+            </div>
         </MudPaper>
     }
 }

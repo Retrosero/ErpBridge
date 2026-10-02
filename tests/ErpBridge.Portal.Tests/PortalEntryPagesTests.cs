@@ -20,9 +20,10 @@ public sealed class PortalEntryPagesTests : PortalPageTestContext
     private const string Entry = "/api/v1/portal/entry/";
     private static readonly Guid AliId = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001");
 
-    private static object Context(string dataSource = "erp", bool onAccount = true) => new
+    private static object Context(string dataSource = "erp", bool onAccount = true, bool purchaseVat = false) => new
     {
         dataSource,
+        purchasePricesIncludeVat = purchaseVat,
         today = "2026-09-21",
         kinds = new[] { "sale", "collection", "purchase", "return", "disbursement", "expense" },
         canSellOnAccount = onAccount,
@@ -70,7 +71,7 @@ public sealed class PortalEntryPagesTests : PortalPageTestContext
     private static void PickCustomer<T>(IRenderedComponent<T> cut) where T : IComponent
     {
         cut.WaitForAssertion(() => cut.Find("#entry-customer-search"));
-        cut.Find("#entry-customer-search").Change("yil");
+        cut.Find("#entry-customer-search").Input("yil");
         cut.Find("#entry-customer-search-go").Click();
         cut.WaitForAssertion(() => cut.Find("[data-customer='C1']"));
         cut.Find("[data-customer='C1']").Click();
@@ -78,7 +79,7 @@ public sealed class PortalEntryPagesTests : PortalPageTestContext
 
     private static void AddProduct<T>(IRenderedComponent<T> cut) where T : IComponent
     {
-        cut.Find("#entry-product-search").Change("cay");
+        cut.Find("#entry-product-search").Input("cay");
         cut.Find("#entry-product-search-go").Click();
         cut.WaitForAssertion(() => cut.Find("[data-product='A']"));
         cut.Find("[data-product='A']").Click();
@@ -108,7 +109,7 @@ public sealed class PortalEntryPagesTests : PortalPageTestContext
         preview.GetProperty("operationId").ValueKind.Should().Be(JsonValueKind.Null, "a preview writes nothing and carries no key");
 
         api.Answer(Entry + "sale", new { documents = new[] { new { jobId = Guid.NewGuid(), externalId = "PNL-SO-x", documentType = "sales_order", status = "Pending" } }, idempotent = false }, HttpStatusCode.Created);
-        cut.Find("#entry-form").Submit();
+        cut.Find("#entry-save").Click();
 
         cut.WaitForAssertion(() => cut.Find("#entry-saved"));
         cut.Find("#entry-saved .entry-saved-state").TextContent.Should().Contain("ERP'ye yazılmayı bekliyor");
@@ -129,16 +130,83 @@ public sealed class PortalEntryPagesTests : PortalPageTestContext
         cut.WaitForAssertion(() => cut.Find("#entry-total").TextContent.Should().Be("100,00 TL"));
 
         api.Fail(Entry + "sale", HttpStatusCode.BadGateway, "UPSTREAM");
-        cut.Find("#entry-form").Submit();
+        cut.Find("#entry-save").Click();
         cut.WaitForAssertion(() => cut.Find("#page-error"));
 
+        // The document may be written: the form stays as it was sent, only Kaydet sends it again (Codex #252).
+        cut.Find("#entry-unsettled").TextContent.Should().Contain("Kaydın sonucu alınamadı");
+        cut.Find("#entry-product-search").HasAttribute("disabled").Should().BeTrue();
+        cut.Find("#entry-owner").HasAttribute("disabled").Should().BeTrue();
+        cut.Find("#entry-clear").HasAttribute("disabled").Should().BeTrue("a new document now could write the same sale twice");
+        cut.Find("#entry-save").HasAttribute("disabled").Should().BeFalse();
+
         api.Answer(Entry + "sale", new { documents = new[] { new { jobId = Guid.NewGuid(), externalId = "PNL-SO-x", documentType = "sales_order", status = "Pending" } }, idempotent = true });
-        cut.Find("#entry-form").Submit();
+        cut.Find("#entry-save").Click();
         cut.WaitForAssertion(() => cut.Find("#entry-saved"));
+        cut.FindAll("#entry-unsettled").Should().BeEmpty();
 
         var keys = api.Requests.Where(r => r.Method == HttpMethod.Post && r.PathAndQuery == Entry + "sale").Select(r => Body(r).GetProperty("operationId").GetString()).ToList();
         keys.Should().HaveCount(2);
         keys.Distinct().Should().ContainSingle("the retry is the same submission");
+    }
+
+    [Fact]
+    public void A_refused_save_wrote_nothing_and_leaves_the_form_open()
+    {
+        var api = Setup();
+        api.Answer(Entry + "sale/preview", SalePreview());
+        var cut = Render<GirisSatis>();
+        PickCustomer(cut);
+        AddProduct(cut);
+        cut.WaitForAssertion(() => cut.Find("#entry-total").TextContent.Should().Be("100,00 TL"));
+
+        api.Fail(Entry + "sale", HttpStatusCode.Conflict, "ENTRY_LIMIT_EXCEEDED");
+        cut.Find("#entry-save").Click();
+
+        cut.WaitForAssertion(() => cut.Find("#page-error"));
+        cut.FindAll("#entry-unsettled").Should().BeEmpty();
+        cut.Find("#entry-product-search").HasAttribute("disabled").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Enter_in_a_search_searches_what_was_typed_and_never_saves()
+    {
+        var api = Setup();
+        api.Answer(Entry + "sale/preview", SalePreview());
+        var cut = Render<GirisSatis>();
+        PickCustomer(cut);
+        AddProduct(cut);
+        cut.WaitForAssertion(() => cut.Find("#entry-total").TextContent.Should().Be("100,00 TL"));
+
+        // No <form>: the browser has nothing to submit on Enter (Codex #252); the key searches the text as typed.
+        cut.FindAll("form").Should().BeEmpty();
+        cut.Find("#entry-product-search").Input("cay");
+        cut.Find("#entry-product-search").KeyDown(new Microsoft.AspNetCore.Components.Web.KeyboardEventArgs { Key = "Enter" });
+
+        cut.WaitForAssertion(() => cut.Find("[data-product='A']"));
+        api.Requests.Should().NotContain(r => r.Method == HttpMethod.Post && r.PathAndQuery == Entry + "sale");
+    }
+
+    [Fact]
+    public void A_purchase_line_starts_at_the_price_the_companys_supplier_setting_asks_for()
+    {
+        var api = Setup();
+        api.Answer(Entry + "context", Context(purchaseVat: true));
+        // List 2 does not include VAT; the company's supplier prices do: 100 + 10 % VAT.
+        api.Answer(Entry + "products?q=cay&take=20", new
+        {
+            items = new[] { new { code = "A", name = "Çay Rize", unit = "KG", vatRate = 10m, prices = new Dictionary<string, decimal> { ["2"] = 100m }, defaultPriceListNo = 2, stock = 5m } },
+            total = 1,
+        });
+        api.Answer(Entry + "purchase/preview", new { kind = "purchase", priceIncludesVat = true, total = 110m, lines = Array.Empty<object>(), payments = Array.Empty<object>(), stockWarnings = Array.Empty<object>() });
+        var cut = Render<GirisAlis>();
+        PickCustomer(cut);
+        AddProduct(cut);
+
+        cut.WaitForAssertion(() => api.Requests.Should().Contain(r => r.PathAndQuery == Entry + "purchase/preview"));
+        var line = Body(api.Requests.First(r => r.PathAndQuery == Entry + "purchase/preview")).GetProperty("lines")[0];
+        line.GetProperty("unitPrice").GetDecimal().Should().Be(110m, "the first line is priced before any preview, from the context (Codex #252)");
+        cut.Markup.Should().Contain("Birim fiyat (KDV dahil)");
     }
 
     [Fact]
@@ -268,6 +336,51 @@ public sealed class PortalEntryPagesTests : PortalPageTestContext
         cut.FindAll("#print-payments tbody tr").Should().HaveCount(2);
         cut.Find("#print-payments").TextContent.Should().Contain("No: 27703");
         cut.Find("#print-total").TextContent.Should().Be("150,00 TL");
+    }
+
+    [Fact]
+    public void An_erp_return_slip_prints_the_refunded_share_of_each_line()
+    {
+        var id = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002");
+        var api = Setup(page: "giris-yazdir?is=" + id);
+        api.Answer(Entry + "documents/" + id, new
+        {
+            jobId = id, externalId = "PNL-SR-x", documentType = "sales_return", kind = "return", dataSource = "erp", state = "written", amount = 110m,
+            enteredAtUtc = PortalTestSetup.Now,
+            payload = new
+            {
+                occurredAt = "21.09.2026 12:00", counterparty = "Yılmaz Market", customerCode = "C1", amount = 110m, settlementMethod = "Cari Alacak",
+                lines = new[] { new { productCode = "A", productTitle = "Çay Rize", quantity = 2m, unitPrice = 100m, conditionPercent = 0.5m } },
+            },
+        });
+
+        var cut = Render<GirisYazdir>();
+
+        // An ERP return's lines carry no total: 2 × 100 at half condition refunds 100 (Codex #252).
+        cut.WaitForAssertion(() => cut.Find("#print-lines tbody tr td:last-child").TextContent.Should().Be("100,00 TL"));
+    }
+
+    [Fact]
+    public void A_purchase_slip_shows_its_vat_and_a_vat_inclusive_total()
+    {
+        var id = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000003");
+        var api = Setup(page: "giris-yazdir?is=" + id);
+        api.Answer(Entry + "documents/" + id, new
+        {
+            jobId = id, externalId = "PNL-PR-x", documentType = "purchase_receipt", kind = "purchase", dataSource = "erp", state = "written", amount = 1100m,
+            enteredAtUtc = PortalTestSetup.Now,
+            payload = new
+            {
+                occurredAt = "2026-09-21T12:00:00+03:00", counterparty = "Toptancı", supplierCode = "C2", amount = 1000m, vatAmount = 100m, grossAmount = 1100m,
+                lines = new[] { new { productCode = "A", productTitle = "Çay Rize", quantity = 10m, unitPrice = 100m, lineTotal = 1000m } },
+            },
+        });
+
+        var cut = Render<GirisYazdir>();
+
+        cut.WaitForAssertion(() => cut.Find("#print-total").TextContent.Should().Be("1.100,00 TL"));
+        cut.Find("#print-vat").TextContent.Should().Be("100,00 TL");
+        cut.Markup.Should().Contain("Genel toplam (KDV dahil)");
     }
 
     [Fact]

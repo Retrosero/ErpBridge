@@ -16,6 +16,7 @@ else
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
     }
+    <EntryUnsettled Shown="Unsettled" />
     @if (Saved is { } saved)
     {
         <EntrySaved Kind="@Kind" Erp="IsErp" Documents="saved.Documents" OnNew="NewDocument" />
@@ -23,15 +24,16 @@ else
     else
     {
         <MudPaper Outlined="true" Class="panel">
-            <form class="stack-form document-form" id="entry-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
-                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Busy" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
+            @* Not a <form>: Enter in a field — a search above all — must never save the document; only Kaydet saves (Codex #252). *@
+            <div class="stack-form document-form" id="entry-form">
+                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Locked" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
 
                 <div class="form-row">
                     @if (IsErp)
                     {
                         <label class="stack-field">
                             <span class="field-label">Gider kartı</span>
-                            <select class="portal-select" id="expense-card" value="@(_card ?? string.Empty)" disabled="@Busy" @onchange="e => ChangedAsync(() => _card = Blank(e.Value))">
+                            <select class="portal-select" id="expense-card" value="@(_card ?? string.Empty)" disabled="@Locked" @onchange="e => ChangedAsync(() => _card = Blank(e.Value))">
                                 <option value="">Seçin</option>
                                 @foreach (var card in Context.ExpenseCards)
                                 {
@@ -48,7 +50,7 @@ else
                     {
                         <label class="stack-field">
                             <span class="field-label">Gider türü</span>
-                            <select class="portal-select" id="expense-category" value="@(_category ?? string.Empty)" disabled="@Busy" @onchange="e => ChangedAsync(() => _category = Blank(e.Value))">
+                            <select class="portal-select" id="expense-category" value="@(_category ?? string.Empty)" disabled="@Locked" @onchange="e => ChangedAsync(() => _category = Blank(e.Value))">
                                 <option value="">Seçin</option>
                                 @foreach (var category in Context.ExpenseCategories)
                                 {
@@ -59,14 +61,14 @@ else
                     }
                     <label class="stack-field">
                         <span class="field-label">Tutar (KDV dahil)</span>
-                        <input type="number" class="portal-input portal-input--number" id="expense-amount" min="0" step="any" value="@Number(_amount)" disabled="@Busy"
+                        <input type="number" class="portal-input portal-input--number" id="expense-amount" min="0" step="any" value="@Number(_amount)" disabled="@Locked"
                                @onchange="e => ChangedAsync(() => { _amount = ParseDecimal(e.Value) ?? 0; RecomputeVat(); })" />
                     </label>
                     @if (IsErp)
                     {
                         <label class="stack-field">
                             <span class="field-label">KDV oranı</span>
-                            <select class="portal-select" id="expense-vat-rate" value="@(_vatPointer?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty)" disabled="@Busy"
+                            <select class="portal-select" id="expense-vat-rate" value="@(_vatPointer?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty)" disabled="@Locked"
                                     @onchange="e => ChangedAsync(() => { _vatPointer = int.TryParse(e.Value?.ToString(), out var p) ? p : null; RecomputeVat(); })">
                                 <option value="">KDV yok</option>
                                 @foreach (var rate in Context.VatRates)
@@ -77,13 +79,13 @@ else
                         </label>
                         <label class="stack-field">
                             <span class="field-label">KDV tutarı</span>
-                            <input type="number" class="portal-input portal-input--number" id="expense-vat" min="0" step="any" value="@Number(_vat)" disabled="@(Busy || _vatPointer is null)"
+                            <input type="number" class="portal-input portal-input--number" id="expense-vat" min="0" step="any" value="@Number(_vat)" disabled="@(Locked || _vatPointer is null)"
                                    @onchange="e => ChangedAsync(() => _vat = Math.Max(0, ParseDecimal(e.Value) ?? 0))" />
                         </label>
                     }
                     <label class="stack-field">
                         <span class="field-label">Ödeme</span>
-                        <select class="portal-select" id="expense-payment" value="@_paymentType" disabled="@Busy" @onchange="e => ChangedAsync(() => { _paymentType = e.Value?.ToString() ?? Cash; _account = null; })">
+                        <select class="portal-select" id="expense-payment" value="@_paymentType" disabled="@Locked" @onchange="e => ChangedAsync(() => { _paymentType = e.Value?.ToString() ?? Cash; _account = null; })">
                             <option value="@Cash">Kasa</option>
                             <option value="Banka">Banka</option>
                             <option value="Kredi Kartı">Kredi Kartı</option>
@@ -93,7 +95,7 @@ else
                     {
                         <label class="stack-field">
                             <span class="field-label">@(_paymentType == Cash ? "Kasa" : "Banka")</span>
-                            <select class="portal-select" id="expense-account" value="@(_account ?? string.Empty)" disabled="@Busy" @onchange="e => ChangedAsync(() => _account = Blank(e.Value))">
+                            <select class="portal-select" id="expense-account" value="@(_account ?? string.Empty)" disabled="@Locked" @onchange="e => ChangedAsync(() => _account = Blank(e.Value))">
                                 <option value="">Varsayılan</option>
                                 @foreach (var account in Accounts)
                                 {
@@ -106,7 +108,7 @@ else
 
                 <label class="stack-field">
                     <span class="field-label">Açıklama</span>
-                    <textarea class="portal-input" id="expense-description" rows="2" maxlength="500" disabled="@Busy" @onchange="e => ChangedAsync(() => _description = Blank(e.Value))">@_description</textarea>
+                    <textarea class="portal-input" id="expense-description" rows="2" maxlength="500" disabled="@Locked" @onchange="e => ChangedAsync(() => _description = Blank(e.Value))">@_description</textarea>
                 </label>
 
                 <EntryChecks Preview="Preview" Problem="@PreviewProblem" />
@@ -114,10 +116,10 @@ else
 
                 <div class="form-actions">
                     <span style="flex: 1"></span>
-                    <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
-                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" id="entry-save">Kaydet</MudButton>
+                    <MudButton Variant="Variant.Text" Disabled="@Locked" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" OnClick="SaveAsync" id="entry-save">Kaydet</MudButton>
                 </div>
-            </form>
+            </div>
         </MudPaper>
     }
 }

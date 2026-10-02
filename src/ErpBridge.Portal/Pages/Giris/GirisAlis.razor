@@ -15,6 +15,7 @@ else
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
     }
+    <EntryUnsettled Shown="Unsettled" />
     @if (Saved is { } saved)
     {
         <EntrySaved Kind="@Kind" Erp="IsErp" Documents="saved.Documents" OnNew="NewDocument" />
@@ -22,29 +23,30 @@ else
     else
     {
         <MudPaper Outlined="true" Class="panel">
-            <form class="stack-form document-form" id="entry-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
-                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Busy" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
-                <CustomerPicker Label="Tedarikçi" Selected="_supplier" Disabled="Busy" Picked="SupplierPickedAsync" />
+            @* Not a <form>: Enter in a field — a search above all — must never save the document; only Kaydet saves (Codex #252). *@
+            <div class="stack-form document-form" id="entry-form">
+                <EntryHeader Context="Context" OwnerUserId="OwnerUserId" Date="@Date" Disabled="Locked" OwnerChanged="OwnerChangedAsync" DateChanged="DateChangedAsync" />
+                <CustomerPicker Label="Tedarikçi" Selected="_supplier" Disabled="Locked" Picked="SupplierPickedAsync" />
 
                 <div class="form-row">
                     <label class="stack-field">
                         <span class="field-label">Seri</span>
-                        <input class="portal-input" id="purchase-series" maxlength="20" value="@_series" disabled="@Busy" @onchange="e => ChangedAsync(() => _series = Blank(e.Value))" />
+                        <input class="portal-input" id="purchase-series" maxlength="20" value="@_series" disabled="@Locked" @onchange="e => ChangedAsync(() => _series = Blank(e.Value))" />
                     </label>
                     <label class="stack-field">
                         <span class="field-label">Sıra no</span>
-                        <input class="portal-input" id="purchase-sequence" maxlength="30" value="@_sequence" disabled="@Busy" @onchange="e => ChangedAsync(() => _sequence = Blank(e.Value))" />
+                        <input class="portal-input" id="purchase-sequence" maxlength="30" value="@_sequence" disabled="@Locked" @onchange="e => ChangedAsync(() => _sequence = Blank(e.Value))" />
                     </label>
                     <label class="stack-field">
                         <span class="field-label">Genel iskontolar %</span>
-                        <input class="portal-input" id="purchase-general-discounts" placeholder="ör. 5 + 2" value="@Chain(_generalDiscounts)" disabled="@Busy"
+                        <input class="portal-input" id="purchase-general-discounts" placeholder="ör. 5 + 2" value="@Chain(_generalDiscounts)" disabled="@Locked"
                                @onchange="e => ChangedAsync(() => _generalDiscounts = ParseChain(e.Value))" />
                     </label>
                 </div>
 
                 <div class="stack-field">
                     <span class="field-label">Kalemler</span>
-                    <ProductPicker Disabled="Busy" Picked="ProductPickedAsync" />
+                    <ProductPicker Disabled="Locked" Picked="ProductPickedAsync" />
                     @if (_lines.Count > 0)
                     {
                         <div class="table-scroll">
@@ -53,7 +55,7 @@ else
                                     <tr>
                                         <th>Ürün</th>
                                         <th class="num">Miktar</th>
-                                        <th class="num">Birim fiyat (@(Preview?.PriceIncludesVat == true ? "KDV dahil" : "KDV hariç"))</th>
+                                        <th class="num">Birim fiyat (@(Context.PurchasePricesIncludeVat ? "KDV dahil" : "KDV hariç"))</th>
                                         <th class="num">Satır isk. %</th>
                                         <th class="num">KDV</th>
                                         <th class="num">Tutar</th>
@@ -67,15 +69,15 @@ else
                                         var priced = Preview?.Lines.ElementAtOrDefault(i);
                                         <tr data-line="@line.Product.Code">
                                             <td class="cell-title">@line.Product.Name<div class="cell-sub">@line.Product.Code</div></td>
-                                            <td class="num"><input type="number" class="portal-input portal-input--number line-quantity" min="1" step="1" value="@Number(line.Quantity)" disabled="@Busy"
+                                            <td class="num"><input type="number" class="portal-input portal-input--number line-quantity" min="1" step="1" value="@Number(line.Quantity)" disabled="@Locked"
                                                                    @onchange="e => ChangedAsync(() => line.Quantity = ParseDecimal(e.Value) ?? line.Quantity)" /></td>
-                                            <td class="num"><input type="number" class="portal-input portal-input--number line-price" min="0" step="any" value="@Number(line.UnitPrice)" disabled="@Busy"
+                                            <td class="num"><input type="number" class="portal-input portal-input--number line-price" min="0" step="any" value="@Number(line.UnitPrice)" disabled="@Locked"
                                                                    @onchange="e => ChangedAsync(() => line.UnitPrice = ParseDecimal(e.Value) ?? line.UnitPrice)" /></td>
-                                            <td class="num"><input class="portal-input line-discounts" placeholder="ör. 5 + 2" value="@Chain(line.Discounts)" disabled="@Busy"
+                                            <td class="num"><input class="portal-input line-discounts" placeholder="ör. 5 + 2" value="@Chain(line.Discounts)" disabled="@Locked"
                                                                    @onchange="e => ChangedAsync(() => line.Discounts = ParseChain(e.Value))" /></td>
                                             <td class="num">@(priced is null ? "—" : Fmt.Money(priced.Vat))</td>
                                             <td class="num line-total">@(priced is null ? "—" : Fmt.Money(priced.Total))</td>
-                                            <td><MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Class="line-remove" aria-label="Kalemi çıkar" Disabled="Busy" OnClick="() => RemoveAsync(line)" /></td>
+                                            <td><MudIconButton Icon="@Icons.Material.Rounded.Close" Size="Size.Small" Class="line-remove" aria-label="Kalemi çıkar" Disabled="Locked" OnClick="() => RemoveAsync(line)" /></td>
                                         </tr>
                                     }
                                 </tbody>
@@ -89,10 +91,10 @@ else
 
                 <div class="form-actions">
                     <span style="flex: 1"></span>
-                    <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
-                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" id="entry-save">Kaydet</MudButton>
+                    <MudButton Variant="Variant.Text" Disabled="@Locked" OnClick="NewDocument" id="entry-clear">Temizle</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSave)" OnClick="SaveAsync" id="entry-save">Kaydet</MudButton>
                 </div>
-            </form>
+            </div>
         </MudPaper>
     }
 }
@@ -148,13 +150,14 @@ else
 
     /// <summary>
     /// A new line starts at the product's headline list price, with or without VAT as the company's supplier prices are
-    /// (the preview tells: Codex #251); the supplier's price is typed over it.
+    /// (Codex #251). The context tells, not the preview: the first line is added before there is one (Codex #252).
+    /// The supplier's price is typed over it.
     /// </summary>
     private async Task ProductPickedAsync(EntryProductDto product)
     {
         var price = product.DefaultPriceListNo is { } list && product.Prices.TryGetValue(list, out var listPrice) ? listPrice : 0;
         var listIncludesVat = Context!.PriceLists.FirstOrDefault(l => l.No == product.DefaultPriceListNo)?.IncludesVat == true;
-        var wantsVat = Preview?.PriceIncludesVat == true;
+        var wantsVat = Context!.PurchasePricesIncludeVat;
         var factor = 1 + product.VatRate / 100;
         var unit = listIncludesVat == wantsVat ? price : listIncludesVat ? price / factor : price * factor;
         _lines.Add(new Line { Product = product, UnitPrice = Math.Round(unit, 2, MidpointRounding.AwayFromZero) });
