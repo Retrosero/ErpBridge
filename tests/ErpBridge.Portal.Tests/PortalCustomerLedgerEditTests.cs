@@ -71,13 +71,15 @@ public sealed class PortalCustomerLedgerEditTests : PortalPageTestContext
     }
 
     [Fact]
-    public void An_erp_company_reads_why_the_statement_has_no_actions()
+    public void An_erp_company_reads_why_the_statement_has_no_corrections_and_still_takes_payments()
     {
         Setup([Row("c1|collection", "collection", null, 0, 300, editable: false)], dataSource: "erp");
         var cut = Render<Cari>();
 
         cut.WaitForAssertion(() => cut.Find("#erp-read-only").TextContent.Should().Contain("ERP'de yapılır"));
-        cut.FindAll("#customer-collect").Should().BeEmpty();
+        cut.FindAll("#customer-adjust").Should().BeEmpty();
+        // GOAL_PANEL_GIRIS P5e: a payment is entered from the panel and written to the ERP.
+        cut.Find("#customer-collect").GetAttribute("href").Should().StartWith("giris/tahsilat?cari=");
     }
 
     [Fact]
