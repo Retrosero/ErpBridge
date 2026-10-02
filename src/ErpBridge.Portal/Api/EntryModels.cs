@@ -21,6 +21,9 @@ public sealed class EntryContextDto
     public List<EntryLookupDto> VatRates { get; set; } = [];
     public List<string> ExpenseCategories { get; set; } = [];
 
+    /// <summary>ERP company: a purchase's typed price includes VAT (the company's supplier price setting).</summary>
+    public bool PurchasePricesIncludeVat { get; set; }
+
     public bool IsErp => string.Equals(DataSource, "erp", StringComparison.OrdinalIgnoreCase);
 }
 

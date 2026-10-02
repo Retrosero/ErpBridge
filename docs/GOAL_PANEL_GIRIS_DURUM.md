@@ -27,6 +27,10 @@ Plan: [GOAL_PANEL_GIRIS.md](GOAL_PANEL_GIRIS.md) · Başlangıç: 2026-10-02
 | P8 | Uçtan uca doğrulama + kapanış | ⏳ | | |
 
 ## Notlar
+- **Codex #252:** (P1) alışta ilk satır önizlemeden önce eklendiği için firmanın "tedarikçi fiyatı KDV dahil" ayarı bağlamdan
+  okunuyor (`context.purchasePricesIncludeVat`); (P1) giriş sayfaları `<form>` değil — aramada Enter belgeyi kaydetmiyor, arama
+  yazılanı arıyor; (P1) yanıtı kaybolan kayıtta form kilitleniyor, yalnız Kaydet aynı gövdeyi aynı anahtarla yeniden gönderiyor;
+  (P2) ERP iade fişinde satır tutarı iade oranıyla; (P2) alış fişinde toplam "KDV dahil" + KDV satırı.
 - **Codex #251:** (P1) firmanın "tedarikçi fiyatı KDV dahil" ayarı açıksa alış fiyatı KDV dahil okunur, `amount` KDV dahil toplamdır
   (Mikro o durumda toplamla karşılaştırır); (P2) giriş sonucu/listesi alışta ödenen KDV dahil tutarı (`grossAmount`) gösterir.
 - **Codex #250:** (P2) ERP tahsilatında kart slip / havale dekont numarası makbuzun açıklamasına yazılıyor (önceden düşüyordu).
