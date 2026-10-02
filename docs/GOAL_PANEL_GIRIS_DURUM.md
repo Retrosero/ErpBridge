@@ -12,14 +12,14 @@ Plan: [GOAL_PANEL_GIRIS.md](GOAL_PANEL_GIRIS.md) · Başlangıç: 2026-10-02
 | P1e | `context` / `customers` / `products` | ✅ | [#250](https://github.com/Retrosero/ErpBridge/pull/250) | Kişi başı hız sınırı; lookup satırına isteğe bağlı `rate` |
 | P2a | Fiyatlama + telefon test vektörleri | ✅ (satış) | [#250](https://github.com/Retrosero/ErpBridge/pull/250) | Satış `CatalogPricing` (= `ErpSalePricing`); iade/alış hesabı P3e/f ile |
 | P2b | Fiyat listesi kuralı | ✅ | [#250](https://github.com/Retrosero/ErpBridge/pull/250) | Ürünün başlık listesi (1, yoksa fiyatlı en küçük) ya da formun listesi; belge listesi en çok kullanılan; KDV yoksa %20 (telefon) |
-| P2c | `PortalCustomerSales` + `returnables` | ⏳ | | İade ile (P3f) |
+| P2c | `PortalCustomerSales` + `returnables` | ✅ | (bu PR) | `stockTransactions` tip=1 + `cariKod`, müşteri başına katlanan ayna; iptal edilen satış sayılmaz; fiyat seçenekleri en yeni üstte |
 | P3a | Satış | ✅ | [#250](https://github.com/Retrosero/ErpBridge/pull/250) | 14 ilişkisel test |
 | P3b | Tahsilat | ✅ | [#250](https://github.com/Retrosero/ErpBridge/pull/250) | ERP'li tek makbuz; ERP'siz yöntem başına belge, hepsi ya da hiçbiri |
 | P3c | Tediye | ✅ | [#250](https://github.com/Retrosero/ErpBridge/pull/250) | ERP'li havalede `bankCode` da gider |
 | P3d | Gider | ✅ | [#250](https://github.com/Retrosero/ErpBridge/pull/250) | ERP'li `expense` + KDV işaretçisi; ERP'siz müşterisiz `disbursement` (yalnız kayıt). 9 ilişkisel test (para belgeleri) |
-| P3e | Alış | ⏳ | | |
-| P3f | İade | ⏳ | | |
-| P4 | `documents/{id}`, son girişlerim | ⏳ | | |
+| P3e | Alış | ✅ | (bu PR) | `purchaseReceiptPayload`; satır + genel iskonto zinciri (≤ 6, `ErpPurchasePricing`); peşin kapalı fatura (K13); `amount` net, `grossAmount` KDV dahil |
+| P3f | İade | ✅ | (bu PR) | Yalnız satılmış ürün + satıldığı fiyat (400 `NOT_SOLD_TO_CUSTOMER`); ERP'li `ErpReturnDocument`, ERP'siz `salesReturnPayload`. 8 ilişkisel test |
+| P4 | `documents/{id}`, son girişlerim | ✅ | (bu PR) | Durum (bekliyor/yeniden/yazıldı + ERP seri-sıra/hata), giren/sahip, gövde; liste kişinin kendi girişleri, yönetici `all=true` |
 | P5a–e | Panel: alanlar/menü, istemci, bileşenler, sayfalar, yazdırma | ⏳ | | |
 | P6a–f | Panel: Görevler | ⏳ | | |
 | P7 | KB + sözleşmeler | ⏳ | | |

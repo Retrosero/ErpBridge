@@ -1844,7 +1844,7 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      satırların en çok kullandığı liste; müşteri iskontosu 0 (telefonun ERP carisinde de yok); kartında KDV olmayan ürün %20.
    - **Tarih (K6):** `PanelEntryDates`: ileri gün reddedilir, geçmiş gün 12:00, bugün şimdiki saat (İstanbul); sınır yok. Bütün Mikro
      yazıcıları evrak tarihini `OccurredAt.Date`'ten alır. 7 günden eski tarihli belge panelin günlük raporlarında o güne sayılmaz (kural 18).
-   - **Idempotency:** `externalId = PNL-{SO|TH|TD|GD}-{operationId}`; panel `operationId`'yi form gönderimi başına bir kez üretir.
+   - **Idempotency:** `externalId = PNL-{SO|TH|TD|GD|PR|SR}-{operationId}`; panel `operationId`'yi form gönderimi başına bir kez üretir.
      ERP'siz tahsilat yöntem başına `-n` belgedir ve tek işlemde yazılır (hepsi ya da hiçbiri); eşzamanlı tekrarda kaybeden
      `DbUpdateException`'ı yakalayıp kazananın işlerini döner. Kayıt ucu önce aynı anahtarın (ve `-n` parçalarının) işlerine bakar.
    - **Tediye** ERP'li havalede `bankCode` da gönderir (telefon yalnız `bankName` gönderiyor → ajan `MOBILE_APP_UPDATE_REQUIRED`).
@@ -1852,4 +1852,16 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      `disbursement` "Gider: …" — yalnız kayıt, ve telefondaki gibi tediye yetkisi/limitiyle denetlenir.
    - Kart/hesap kodları `PanelEntryLookups` ile ajanın `lookups` satırlarından (`PortalErpWriteEndpoints.ReadLookupsAsync`, satıra
      isteğe bağlı `rate`); bu uç ERP ayarları sayfasının aksine yönetici şartı aramaz.
-   - Testler: `PortalEntrySaleRelationalTests`, `PortalEntryMoneyRelationalTests` (`PortalEntryTestSupport`), `DocumentPermissionCheckTests`.
+   - **Alış** (`purchase`, `PanelEntryLines`): telefonun `purchaseReceiptPayload`'ı iki firma türünde aynı; tedarikçinin KDV'siz fiyatı,
+     satırın sonra faturanın iskontoları zincirli (≤ 6'şar, `PurchasePricing` = `ErpPurchasePricing` = Mikro), KDV ürün kartından, peşin
+     tek kapalı fatura (K13). `amount` net, `grossAmount` KDV dahil — limit `grossAmount`'a bakar.
+   - **İade** (`return`): yalnız müşteriye satılmış ürün, satıldığı fiyatlardan biriyle (`Portal/PortalCustomerSales`: `stockTransactions`
+     `tip = 1` + `cariKod`, müşteri başına katlanan ayna, iptal edilen satış ve ters kaydı sayılmaz; telefonun `observeSalesForCustomer` +
+     `salePricesFor`'u). ERP'li firmada `ErpReturnDocument.payload` (liste KDV dahilse satılan KDV'siz fiyata KDV geri eklenir, iade
+     oranı 0–1, belge listesi satırların en çok kullandığı başlık listesi), ERP'siz firmada `salesReturnPayload` (fiyat × miktar × oran,
+     KDV'siz — telefonun rakamı). `GET returnables?customerCode=` formun listesi.
+   - **Sonuç ve liste (P4)** `PanelEntryDocuments`: `GET documents/{jobId}` durum (`ErpDocumentStates`), ERP seri-sıra (`JobAcks`),
+     giren (denetim satırı) ve sahip, gövde (yazdırma); `GET documents` son girişler (denetim satırlarından, kişinin kendisi; yönetici
+     `all=true`). Yalnız `PNL-` anahtarlı ve türünün modülü açık işler.
+   - Testler: `PortalEntrySaleRelationalTests`, `PortalEntryMoneyRelationalTests`, `PortalEntryLinesRelationalTests` (`PortalEntryTestSupport`),
+     `DocumentPermissionCheckTests`.
