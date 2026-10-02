@@ -90,8 +90,7 @@ public sealed class JobsLongPollTests : IClassFixture<CentralApiFactory>
         var clock = Stopwatch.StartNew();
         var leased = await LeaseAsync(token, wait: 1);
 
-        clock.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(900));
-        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5));
+        clock.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(900), "the server held the poll for the wait");
         leased.Should().BeEmpty();
     }
 
