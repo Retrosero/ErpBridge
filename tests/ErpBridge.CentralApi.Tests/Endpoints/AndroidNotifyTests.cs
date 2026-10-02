@@ -29,7 +29,30 @@ public sealed class AndroidNotifyTests : IClassFixture<CentralApiFactory>
     }
 
     [Fact]
-    public async Task Change_set_push_wakes_a_mobile_long_poll()
+    public async Task Change_set_with_a_deletion_wakes_a_mobile_long_poll()
+    {
+        var (notifyTask, ingest) = await PushWhileWaitingAsync(withDeletion: true, wait: 10);
+        ingest.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var notify = await notifyTask;
+        notify.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await notify.Content.ReadAsStringAsync()).Should().Contain("\"updated\":true");
+    }
+
+    [Fact]
+    public async Task Insert_only_change_set_does_not_wake_a_mobile_long_poll()
+    {
+        // Every sale written to Mikro produces one of these. Phones read only
+        // deletions from a change set; the snapshot upload that follows wakes
+        // them once, with the data.
+        var (notifyTask, ingest) = await PushWhileWaitingAsync(withDeletion: false, wait: 3);
+        ingest.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var notify = await notifyTask;
+        (await notify.Content.ReadAsStringAsync()).Should().NotContain("\"updated\":true");
+    }
+
+    private async Task<(Task<HttpResponseMessage> Notify, HttpResponseMessage Ingest)> PushWhileWaitingAsync(bool withDeletion, int wait)
     {
         var client = _factory.CreateClient();
         var suffix = Guid.NewGuid().ToString("N")[..8];
@@ -43,15 +66,10 @@ public sealed class AndroidNotifyTests : IClassFixture<CentralApiFactory>
         mobile.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         mobile.DefaultRequestHeaders.Add("X-Tenant-Id", tenant.Id.ToString());
 
-        // Register the waiter first so the hub has a subscriber before publish.
-        var notifyTask = mobile.GetAsync("/api/v1/android/notify?wait=10");
+        var notifyTask = mobile.GetAsync($"/api/v1/android/notify?wait={wait}");
 
-        // A fixed sleep here raced the HTTP pipeline reaching NotifyAsync and
-        // calling hub.WaitAsync — under CI load the subscriber sometimes was
-        // not registered yet when Publish ran, and Publish is a no-op with no
-        // one listening, so the waiter timed out at the full 10s and the test
-        // flaked. Poll the hub's own subscriber count instead: it is exact,
-        // so the ingest below only fires once the wait is actually parked.
+        // Poll the hub's own subscriber count rather than sleeping: publishing
+        // before the long-poll registered is a no-op and would flake.
         var hub = (BootstrapNotificationHub)_factory.Services.GetRequiredService<IBootstrapNotificationHub>();
         for (var attempt = 0; attempt < 300 && hub.GetWaiterCount(tenant.Id) == 0; attempt++)
         {
@@ -87,18 +105,22 @@ public sealed class AndroidNotifyTests : IClassFixture<CentralApiFactory>
                         highestSequence = 10,
                         moreAvailable = false,
                     },
-                    deleted = (object?)null,
+                    deleted = withDeletion
+                        ? (object?)new
+                        {
+                            table,
+                            rows = new[] { new { recordKey = "S-2", sequence = 5 } },
+                            highestSequence = 5,
+                            moreAvailable = false,
+                        }
+                        : null,
                     previousUpsertSequence = 0,
                     newUpsertSequence = 10,
                     previousDeleteSequence = 0,
-                    newDeleteSequence = 0,
+                    newDeleteSequence = withDeletion ? 5 : 0,
                 },
             },
         }, agentToken);
-        ingest.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var notify = await notifyTask;
-        notify.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await notify.Content.ReadAsStringAsync()).Should().Contain("\"updated\":true");
+        return (notifyTask, ingest);
     }
 }
