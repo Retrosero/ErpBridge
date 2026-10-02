@@ -943,13 +943,16 @@ registration ayrı bir composition projesine taşınır.
      `token=`/`"licenseKey":`/`apiKey:` adlı değerler). Masaüstü telemetri raporlayıcısı da aynı listeyi kullanır; ajan
      tarafında ikinci bir gizli bilgi listesi yazılmaz. `MaskPassword` değeri artık satır sonunda durur (önceden bir
      sonraki satırdaki istisna türünü yutuyordu); tırnaklı değer (`Password="Top;Secret"`) bütün olarak maskelenir.
-   - **Sürüm:** `Directory.Build.props` `VersionPrefix` (1.3.0) tüm derlemelerin sürümüdür; olaylar bunu taşır
+   - **Sürüm:** `Directory.Build.props` `VersionPrefix` (1.4.0) tüm derlemelerin sürümüdür; olaylar bunu taşır
      (ajan önceden hep `1.0.0.0` gönderiyordu). Müşteriye yeni ajan derlemesi çıkarken artırılır. 1.2.0
      (2026-09-27): alış faturası iskontosu — heartbeat'teki `appVersion` 1.2.0'dan küçük ajan iskontolu alışı yazamaz.
      1.3.0 (2026-09-28, GOAL_HEDEF_RUT E1/E2): hareket satırlarında `plasiyerKod`, lookups'ta `stock_brand`/`stock_main_group`
      (projeksiyon 8) **ve stok hareketi okumasının onarımı**: #178'den (2026-09-23) beri `ReadStockTransactionsAsync` her canlı
      okumada Dapper kurucu eşlemesiyle düşüyordu (aşağıdaki kolon sırası kuralı). 1.2.0 kurulu müşteride stok hareketleri
      aynaya gelmez; 1.3.0 kurulunca projeksiyon 8 bir kez tam okuma yapar.
+     1.4.0 (2026-10-02, ajan hızı A1/A2): işlere uzun yoklama (`GET /jobs/pending?wait=25`) ve ERP yazımından hemen sonra
+     senkron turu (`AgentSyncTrigger`, bkz. 01 §6 "Olay-güdümlü yazım"). **Hızlanma ajan 1.4.0 kurulunca gelir**; sunucu
+     tarafı (S2) geriye uyumludur — `wait` göndermeyen eski ajan eskisi gibi hemen yanıt alır ve 30 sn'de bir sorar.
    - **Log Merkezi'ne gönderim (L3c):** ajan kodu tanılama olaylarını `Core/Logging/IAgentLogReporter` ile bildirir;
      olay SQLite'taki `agent_log_outbox`'a yazılır (en çok 1.000 / 7 gün) ve heartbeat turunda `AgentLogUploader`
      en çok 50'lik partiyle `POST /api/v1/agents/logs/batch`'e gönderir. Aynı parmak izli hata 10 dakikada bir
@@ -988,7 +991,7 @@ registration ayrı bir composition projesine taşınır.
      etmesin). Sunucu `agents`'a nullable kolonları yazar, `lastError`'ı bir kez daha maskeler ve geçmişi
      `agent_heartbeat_log`'a **yalnız değişimde ya da 15 dakikada bir** satırlar.
    - **Senkron turu ölçümü (L3e):** her tur bir INFO `AGENT_SYNC_ROUND` olayı bildirir (`Core/Logging/AgentSyncRound`).
-     Özellikler: `trigger` (`timer`/`manual`/`section` tetikleyicisi), `mode` (`changelog`/`snapshot`/`section`),
+     Özellikler: `trigger` (`timer`/`manual`/`section` tetikleyicisi; 1.4.0'dan beri `job` = ERP yazımından hemen sonra istenen tur), `mode` (`changelog`/`snapshot`/`section`),
      `success`, `durationMs`, `rows`, hareket eden **bölüm başına** `rows.<bölüm>`, `payloadBytes`, `errorCode`.
      **Yalnız sayı taşır** — cari, stok ya da fiyat yok. 20 saniyede bir tur kuyruğu doldurmaz: parmak izi
      sayıları temizlediği için başarılı turlar tek satırda toplanır (`repeat_count`), başarısız tur ve farklı

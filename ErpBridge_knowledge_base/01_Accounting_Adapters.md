@@ -254,6 +254,36 @@ Android tarafında `LiveSyncManager.run(context)` uygulama ön plandayken
 `SyncManager.startSyncAll` tetikler. Arka planda `PeriodicSyncWorker` (15 dk)
 yedek kalır. Sonuç: ERP değişikliği cihaza **saatlik yerine ~5-20 sn**'de ulaşır.
 
+### Olay-güdümlü yazım: iş uzun yoklaması ve yazım sonrası senkron (ajan hızı, 2026-10-02, ajan 1.4.0)
+
+Telefondaki satışın sonucu (fatura no, bakiye, stok) telefonlara eskiden en kötü ~1 dk'da dönüyordu: ajan işleri
+30 sn'de bir soruyordu, ERP'ye yazdıktan sonra da hiçbir şey senkron başlatmıyordu (20 sn'lik tur + snapshot'ın
+30 sn'lik penceresi). Üç parça:
+
+- **S2 — sunucu (`JobsEndpoints.PendingAsync`):** `GET /api/v1/jobs/pending?wait=N` (0–25 sn). Kiralanacak iş yoksa
+  istek açık kalır; firma başına `Jobs/IJobSignal` commit'ten hemen sonra uyandırır, sinyal gelmese de 5 sn'de bir
+  kiralama sorgusu yeniden çalışır. Ayrıntı ve sinyal noktaları: 03 `jobs`. `wait` yoksa davranış aynıdır (geriye uyumlu).
+- **A1 — ajan (`AgentJobPump`):** her yoklama `wait=LongPollWaitSeconds` (25) ile gider (`AgentService:JobLongPollWaitSeconds`,
+  0 = kapalı). İş geldiyse ya da sunucu isteği beklemenin en az yarısı kadar tutup boş döndüyse **hemen** yeniden sorar;
+  hızlı boş yanıt (eski sunucu, `wait`'i bilmez) ya da hata gelirse `JobPollIntervalSeconds` (30) bekler — eski sunucu
+  ya da kesinti döngüyü sıkıştırmaz. `HttpRemoteApiClient` beklemeyi `CentralApi:TimeoutSeconds - 10`'a kısaltır
+  (istemcinin `HttpClient.Timeout`'u bekleyen isteği kesmesin; 600 sn'lik kurulumda 25, 30 sn'lik örnekte 20 sn).
+- **A2 — ajan (`Core/Sync/AgentSyncTrigger`):** süreç başına tek (DI singleton, `AddErpBridgeCore`; Windows servisi ve
+  tepsi uygulaması kendi kapsayıcısını kurar, pompa ile döngü aynısını paylaşır). Pompa bir yoklamada **en az bir
+  belgeyi ERP'ye yazdıysa** (ack gönderilemese bile) yoklama başına bir kez `Request()` der; red ya da `retryable`
+  hata istemez (ERP değişmedi). İstekler birleşir (kapasite 1 kanal): tur sürerken gelen istek bir sonraki tura kalır,
+  on istek tek tur eder. `AgentSyncLoop` "aralık **ya da** tetik" bekler; tetikli tur önceki turun bitişinden en az
+  `KickMinGapSeconds` (5, `AgentService:SyncKickMinGapSeconds`) sonra başlar, önce **yalnız**
+  `IBootstrapSyncService.InvalidateAsync()` çağırır (snapshot'ın `LastSuccessAt`'i silinir, `LastToken` imleci korunur
+  — 30 sn'lik pencere atlanır), sonra normal tur (change-log + snapshot) koşar ve Log Merkezi'ne `trigger=job` bildirir.
+  Snapshot turu kapalıysa (`RefreshSnapshotInTriggerMode=false`) invalidate da yapılmaz.
+
+> ⚠️ **`ErpChangeLogSyncService.InvalidateAsync` asla bu yolda çağrılmaz:** change-log imlecini sıfırlar, her yazım
+> tüm akışın yeniden okunmasına dönerdi (`Only_a_requested_round_clears_the_snapshot_window` testi sabitler).
+>
+> `ChangeSetEndpoints`'in telefonlara `notify` yayını bu işte **değiştirilmedi** (ayrı karar). Hızlanma ajan 1.4.0
+> kurulunca gelir; sunucu tarafı tek başına zarar vermez.
+
 ### Android silme kuyruğu
 
 Android `sync/queue?operation=delete` çağırır; `BridgeSyncHelper.syncMobileDeleteQueue`
@@ -556,7 +586,9 @@ eklenmedi):
 - `AgentJobPump` + `SalesOrderPayloadDeserializer` artık `AddErpBridgeCore()` içinde kayıtlı, yani
   her iki host da aynı grafiği kurar.
 - Ayarlar (`AgentService` bölümü, iki host ortak): `JobPollIntervalSeconds` (30),
-  `JobPollFirstRunDelaySeconds` (5), WPF'e özel `JobPumpEnabled` (`true`).
+  `JobPollFirstRunDelaySeconds` (5), WPF'e özel `JobPumpEnabled` (`true`). 1.4.0'dan beri `JobLongPollWaitSeconds` (25)
+  ve `SyncKickMinGapSeconds` (5) — bkz. §6 "Olay-güdümlü yazım"; uzun yoklama açıkken 30 sn yalnız eski sunucu/hata
+  durumundaki aralıktır.
 - İki host aynı anda çalışırsa sorun yok: `GET /jobs/pending` işi `Pending → Processing` kiralar,
   her iş tek bir yoklamaya düşer.
 
