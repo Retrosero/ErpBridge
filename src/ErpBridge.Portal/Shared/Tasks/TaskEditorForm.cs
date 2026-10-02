@@ -10,6 +10,18 @@ namespace ErpBridge.Portal.Shared.Tasks;
 public sealed class TaskEditorForm
 {
     public Guid? TaskId { get; init; }
+
+    /// <summary>A new task's (or series') id: made with the form, kept across its sends.</summary>
+    public Guid NewId { get; } = Guid.NewGuid();
+
+    /// <summary>
+    /// The id of the form's op, made once and kept while a send has no answer (Codex #253): sent again it is the same op —
+    /// the server answers a known op id <c>duplicate</c> — never a second task. <see cref="Answered"/> makes new ones: an op the
+    /// server applied must not swallow a later edit as its duplicate.
+    /// </summary>
+    public Guid OpId { get; private set; } = Guid.NewGuid();
+
+    private Guid _membersOpId = Guid.NewGuid();
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string Priority { get; set; } = "NORMAL";
@@ -29,6 +41,13 @@ public sealed class TaskEditorForm
     private HashSet<Guid> _followersBefore = [];
 
     public static TaskEditorForm New(Guid? me) => new() { Assignees = me is { } self ? [self] : [] };
+
+    /// <summary>The server answered the last send (applied or refused): the next send is new ops.</summary>
+    public void Answered()
+    {
+        OpId = Guid.NewGuid();
+        _membersOpId = Guid.NewGuid();
+    }
 
     public static TaskEditorForm From(TaskDto task)
     {
@@ -61,8 +80,9 @@ public sealed class TaskEditorForm
             [
                 new TaskOp
                 {
+                    OpId = OpId,
                     Type = "create_task",
-                    TaskId = Guid.NewGuid(),
+                    TaskId = NewId,
                     Title = Title.Trim(),
                     Description = Description,
                     Priority = Priority,
@@ -84,6 +104,7 @@ public sealed class TaskEditorForm
         {
             new()
             {
+                OpId = OpId,
                 Type = "update_task",
                 TaskId = id,
                 Title = Title.Trim(),
@@ -98,7 +119,7 @@ public sealed class TaskEditorForm
             },
         };
         if (!Assignees.SetEquals(_assigneesBefore) || !Followers.SetEquals(_followersBefore))
-            ops.Add(new TaskOp { Type = "set_members", TaskId = id, AssigneeIds = [.. Assignees], FollowerIds = [.. Followers] });
+            ops.Add(new TaskOp { OpId = _membersOpId, Type = "set_members", TaskId = id, AssigneeIds = [.. Assignees], FollowerIds = [.. Followers] });
         return ops;
     }
 }

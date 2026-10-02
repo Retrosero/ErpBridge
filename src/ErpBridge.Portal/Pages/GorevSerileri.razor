@@ -59,7 +59,7 @@ else
         <ChildContent>
             @if (_form is { } form)
             {
-                <TaskEditor Form="form" People="_people" CanManage="_canManage" Me="Session.UserId" Busy="Busy" />
+                <TaskEditor Form="form" People="_people" CanManage="_canManage" Me="Session.UserId" Busy="Busy" ShowSubtasks="true" />
                 <div class="stack-form">
                     <div class="form-row document-form">
                         <label class="stack-field">
@@ -186,8 +186,10 @@ else
         var minutes = TimeOnly.TryParse(_time, out var at) ? at.Hour * 60 + at.Minute : 9 * 60;
         var op = new TaskOp
         {
+            // Kept while a send has no answer: sent again it is the same series, never a second one (Codex #253).
+            OpId = form.OpId,
             Type = _editing is null ? "create_series" : "update_series",
-            SeriesId = _editing?.Id ?? Guid.NewGuid(),
+            SeriesId = _editing?.Id ?? form.NewId,
             Title = form.Title.Trim(),
             Description = form.Description,
             Priority = form.Priority,
@@ -207,23 +209,34 @@ else
             // The last day is included: the series ends when the next day starts.
             EndsAtMs = Fmt.TryIsoDay(_ends, out var last) ? Fmt.DayStartMs(last.AddDays(1)) : null,
         };
-        if (await SendAsync(op)) _form = null;
+        var sent = await SendAsync(op);
+        if (sent != TaskSendResult.Unknown) form.Answered();
+        if (sent == TaskSendResult.Applied) _form = null;
     }
 
     private Task StopAsync(TaskSeriesDto series) => SendAsync(new TaskOp { Type = "stop_series", SeriesId = series.Id });
 
-    private async Task<bool> SendAsync(TaskOp op)
+    private async Task<TaskSendResult> SendAsync(TaskOp op)
     {
-        var applied = false;
+        var sent = TaskSendResult.Refused;
         await RunAsync(async () =>
         {
-            var answer = await Api.TaskOpsAsync([op]);
+            TaskOpsResponse answer;
+            try
+            {
+                answer = await Api.TaskOpsAsync([op]);
+            }
+            catch (Exception ex) when (TaskSend.IsUnknown(ex))
+            {
+                sent = TaskSendResult.Unknown;
+                throw;
+            }
             var refused = answer.Results.FirstOrDefault(r => r.Status == "rejected");
             if (refused is not null) Error = refused.Message ?? "İşlem yapılamadı.";
-            applied = refused is null;
+            sent = refused is null ? TaskSendResult.Applied : TaskSendResult.Refused;
             _series = await Api.TaskSeriesAsync();
         });
-        return applied;
+        return sent;
     }
 
     private static string Rule(TaskSeriesDto series)

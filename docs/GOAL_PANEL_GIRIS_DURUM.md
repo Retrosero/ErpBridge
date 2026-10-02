@@ -47,6 +47,10 @@ Plan: [GOAL_PANEL_GIRIS.md](GOAL_PANEL_GIRIS.md) · Başlangıç: 2026-10-02
   artık `DbSet` üzerinden eklenir. Telefonun aynı işlemi de bundan etkileniyordu (yeni görevle birlikte gelen alt görevler değil,
   sonradan eklenenler). Test: `PortalTasksAccessRelationalTests.A_subtask_added_to_an_existing_task_is_saved`.
 
+- **Codex #253:** (P1) yanıtı kaybolan görev/seri/yorum/alt görev gönderimi aynı op ve nesne kimliğiyle tekrarlanıyor (ikinci görev
+  açılmıyor); (P2) görev sayfası 5 dakikada bir tam liste okuyup görünmez olan görevi düşürüyor; (P2) uzun yoklamanın ilk yanıtı
+  da okutuyor; (P2) seri düzenlemede alt görev başlıkları görünüyor ve gönderiliyor.
+
 ## Seni Bekleyenler
 - Muhasebe (ACCOUNTING) rolü panelden giriş yapacaksa `/yetkiler`'den ilgili `module.*` anahtarları açılmalı (varsayılan kapalı).
 - Sınırsız geçmiş tarih: 7 günden eski tarihli girişler panel günlük raporlarında o güne sayılmaz (ekstre/bakiye doğru) —

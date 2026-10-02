@@ -2,6 +2,7 @@
 @inherits PortalPageBase
 @implements IDisposable
 @inject IImageShrinker Shrinker
+@inject PortalRefreshTiming Refresh
 
 <PageTitle>Görevler — Yönetim Paneli</PageTitle>
 
@@ -251,6 +252,12 @@ else
     private string _newComment = string.Empty;
     private readonly CancellationTokenSource _live = new();
     private bool _disposed;
+    private DateTimeOffset _fullReadAt;
+
+    // An added subtask or comment keeps its op and its id while its send has no answer (Codex #253): sent again it is the
+    // same one, never a second. It goes on an answer, or when its text or task changes.
+    private TaskOp? _subtaskOp;
+    private TaskOp? _commentOp;
 
     private List<TaskDto> Visible => [.. _tasks.Values
         .Where(t => !t.IsDeleted)
@@ -269,23 +276,42 @@ else
     {
         _summary = await Api.TaskSummaryAsync();
         _people = await Api.TaskPeopleAsync();
-        await ReadChangesAsync();
+        await ReadAllAsync();
         if (Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query).TryGetValue("gorev", out var id) && Guid.TryParse(id[^1], out var taskId))
             await OpenDetailAsync(taskId);
         _ = ListenAsync();
     }
 
-    /// <summary>The tasks changed since the last read; the whole list on the first.</summary>
-    private async Task ReadChangesAsync()
+    /// <summary>
+    /// The whole list again, as the phone does now and then (KB 00 kural 27): the changes read leave out a task the user
+    /// may no longer see — taken off it, say — so only a full read drops it (Codex #253).
+    /// </summary>
+    private async Task ReadAllAsync()
     {
+        var all = new Dictionary<Guid, TaskDto>();
+        var latest = await ReadAsync(all, 0);
+        _tasks.Clear();
+        foreach (var (id, task) in all) _tasks[id] = task;
+        _latestSeq = latest;
+        _fullReadAt = DateTimeOffset.UtcNow;
+    }
+
+    /// <summary>The tasks changed since the last read.</summary>
+    private async Task ReadChangesAsync() => _latestSeq = Math.Max(_latestSeq, await ReadAsync(_tasks, _latestSeq));
+
+    /// <summary>Every page of the tasks changed since <paramref name="since"/>, into <paramref name="into"/>; the latest seq.</summary>
+    private async Task<long> ReadAsync(Dictionary<Guid, TaskDto> into, long since)
+    {
+        var latest = since;
         TaskListResponse page;
         do
         {
-            page = await Api.TasksAsync(_latestSeq);
-            foreach (var task in page.Tasks) _tasks[task.Id] = task;
-            _latestSeq = Math.Max(_latestSeq, page.LatestSeq);
+            page = await Api.TasksAsync(latest);
+            foreach (var task in page.Tasks) into[task.Id] = task;
+            latest = Math.Max(latest, page.LatestSeq);
         }
         while (page.HasMore && page.Tasks.Length > 0);
+        return latest;
     }
 
     /// <summary>The phone's long-poll (GOAL_GOREVLER K2): another user's change shows without a refresh.</summary>
@@ -298,20 +324,20 @@ else
             {
                 var changed = await Api.TaskEventsAsync(version, 25, _live.Token);
                 if (_disposed) return;
-                if (changed is { } now && now != version)
+                var full = DateTimeOffset.UtcNow - _fullReadAt >= Refresh.TasksFullRead;
+                // The first answer reads too: a change made after the page's first read and before it began listening
+                // would otherwise wait for the next one (Codex #253).
+                if ((changed is { } now && now != version) || full)
                 {
-                    var first = version is null;
-                    version = now;
-                    if (!first)
+                    version = changed ?? version;
+                    await InvokeAsync(async () =>
                     {
-                        await InvokeAsync(async () =>
-                        {
-                            await ReadChangesAsync();
-                            _summary = await Api.TaskSummaryAsync();
-                            if (_detail is { } open) _detail = await Api.TaskAsync(open.Id);
-                            StateHasChanged();
-                        });
-                    }
+                        if (full) await ReadAllAsync();
+                        else await ReadChangesAsync();
+                        _summary = await Api.TaskSummaryAsync();
+                        if (_detail is { } open) _detail = await StillVisibleAsync(open.Id);
+                        StateHasChanged();
+                    });
                 }
                 await Task.Delay(TimeSpan.FromSeconds(1), _live.Token);
             }
@@ -337,6 +363,21 @@ else
 
     private void CloseDetail() => _detail = null;
 
+    /// <summary>The open task read again; null when it is gone or the user may no longer see it.</summary>
+    private async Task<TaskDetailDto?> StillVisibleAsync(Guid id)
+    {
+        if (!_tasks.TryGetValue(id, out var seen) || seen.IsDeleted) return null;
+        try
+        {
+            return await Api.TaskAsync(id);
+        }
+        catch (PortalApiException gone) when (gone.Status == 404)
+        {
+            _tasks.Remove(id);
+            return null;
+        }
+    }
+
     /// <summary>The browser cannot send the token: pictures come through the circuit and show as data addresses.</summary>
     private async Task LoadPicturesAsync(TaskDetailDto detail)
     {
@@ -348,27 +389,36 @@ else
     }
 
     /// <summary>Sends the changes; a refused one shows its reason, the task list and the open task are read again.</summary>
-    private async Task<bool> SendAsync(params TaskOp[] ops)
+    private async Task<TaskSendResult> SendAsync(params TaskOp[] ops)
     {
-        var applied = false;
+        var sent = TaskSendResult.Refused;
         await RunAsync(async () =>
         {
-            var answer = await Api.TaskOpsAsync(ops);
+            TaskOpsResponse answer;
+            try
+            {
+                answer = await Api.TaskOpsAsync(ops);
+            }
+            catch (Exception ex) when (TaskSend.IsUnknown(ex))
+            {
+                sent = TaskSendResult.Unknown;
+                throw;
+            }
             foreach (var task in answer.Tasks) _tasks[task.Id] = task;
             var refused = answer.Results.FirstOrDefault(r => r.Status == "rejected");
             if (refused is not null) Error = refused.Message ?? "İşlem yapılamadı.";
-            applied = refused is null;
+            sent = refused is null ? TaskSendResult.Applied : TaskSendResult.Refused;
             if (_detail is { } open && _tasks.ContainsKey(open.Id) && !_tasks[open.Id].IsDeleted) _detail = await Api.TaskAsync(open.Id);
             _summary = await Api.TaskSummaryAsync();
         });
-        return applied;
+        return sent;
     }
 
     private Task SimpleOpAsync(string type) => SendAsync(new TaskOp { Type = type, TaskId = _detail!.Id });
 
     private async Task DeleteTaskAsync()
     {
-        if (await SendAsync(new TaskOp { Type = "delete_task", TaskId = _detail!.Id }))
+        if (await SendAsync(new TaskOp { Type = "delete_task", TaskId = _detail!.Id }) == TaskSendResult.Applied)
         {
             _tasks.Remove(_detail.Id);
             _detail = null;
@@ -384,18 +434,31 @@ else
     private async Task AddSubtaskAsync()
     {
         if (string.IsNullOrWhiteSpace(_newSubtask)) return;
-        if (await SendAsync(new TaskOp
+        var title = _newSubtask.Trim();
+        if (_subtaskOp is null || _subtaskOp.TaskId != _detail!.Id || _subtaskOp.Title != title)
         {
-            Type = "add_subtask", TaskId = _detail!.Id, SubtaskId = Guid.NewGuid(), Title = _newSubtask.Trim(),
-            SortOrder = _detail.Subtasks.Length == 0 ? 0 : _detail.Subtasks.Max(s => s.SortOrder) + 1,
-        })) _newSubtask = string.Empty;
+            _subtaskOp = new TaskOp
+            {
+                Type = "add_subtask", TaskId = _detail!.Id, SubtaskId = Guid.NewGuid(), Title = title,
+                SortOrder = _detail.Subtasks.Length == 0 ? 0 : _detail.Subtasks.Max(s => s.SortOrder) + 1,
+            };
+        }
+        var sent = await SendAsync(_subtaskOp);
+        if (sent == TaskSendResult.Unknown) return;
+        _subtaskOp = null;
+        if (sent == TaskSendResult.Applied) _newSubtask = string.Empty;
     }
 
     private async Task AddCommentAsync()
     {
         if (string.IsNullOrWhiteSpace(_newComment)) return;
-        if (await SendAsync(new TaskOp { Type = "add_comment", TaskId = _detail!.Id, CommentId = Guid.NewGuid(), Text = _newComment.Trim() }))
-            _newComment = string.Empty;
+        var text = _newComment.Trim();
+        if (_commentOp is null || _commentOp.TaskId != _detail!.Id || _commentOp.Text != text)
+            _commentOp = new TaskOp { Type = "add_comment", TaskId = _detail!.Id, CommentId = Guid.NewGuid(), Text = text };
+        var sent = await SendAsync(_commentOp);
+        if (sent == TaskSendResult.Unknown) return;
+        _commentOp = null;
+        if (sent == TaskSendResult.Applied) _newComment = string.Empty;
     }
 
     private async Task UploadPictureAsync(InputFileChangeEventArgs e)
@@ -439,11 +502,12 @@ else
             Error = "Başlık girin.";
             return;
         }
-        var ops = form.ToOps();
-        if (await SendAsync([.. ops]))
+        var sent = await SendAsync([.. form.ToOps()]);
+        if (sent != TaskSendResult.Unknown) form.Answered();
+        if (sent == TaskSendResult.Applied)
         {
             _editor = null;
-            if (form.TaskId is null && ops.FirstOrDefault()?.TaskId is { } created) await OpenDetailAsync(created);
+            if (form.TaskId is null) await OpenDetailAsync(form.NewId);
         }
     }
 

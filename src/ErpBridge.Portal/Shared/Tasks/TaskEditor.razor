@@ -70,7 +70,7 @@
         }
     </div>
 
-    @if (Form.TaskId is null && ShowSubtasks)
+    @if (ShowSubtasks ?? Form.TaskId is null)
     {
         <label class="stack-field">
             <span class="field-label">Alt görevler (her satır bir alt görev)</span>
@@ -85,7 +85,11 @@
     [Parameter] public bool CanManage { get; set; }
     [Parameter] public Guid? Me { get; set; }
     [Parameter] public bool Busy { get; set; }
-    [Parameter] public bool ShowSubtasks { get; set; } = true;
+    /// <summary>
+    /// Whether the subtask titles are edited here: by default only a new task's (an existing one's subtasks are edited on
+    /// it). A series always edits its titles — <c>update_series</c> replaces the list (Codex #253).
+    /// </summary>
+    [Parameter] public bool? ShowSubtasks { get; set; }
 
     private const string DefaultPriority = "NORMAL";
 
