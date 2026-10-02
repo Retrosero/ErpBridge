@@ -86,6 +86,12 @@ ilgili knowledge_base dosyasını da güncelle.
   PR, CI yeşilken `main`'e birleştirme, Coolify dağıtımı ve `/health/schema` kontrolü, Sipariş Cepte'yi Play **internal**'a
   yükleme. R2 API anahtarı değerleri kullanıcıdadır (Claude görmez/girmez). Aynı yasaklar geçerli; Mikro'ya yazım yok.
 
+- **İstisna (2026-10-02):** Siparis_Cepte `docs/PLAN_SAYFA_GORUNUM_AYARLARI.md` (sayfa bazlı görünüm ayarları; panelden
+  kişiye/role özel düzenleme, kilit, kopyalama) aşamalarının bu depodaki ayağı (C sunucu, D panel) için dala push, PR,
+  CI yeşilken (Actions kredisi yoksa yerel `dotnet build` 0 uyarı + `dotnet test` yeşilken) `main`'e birleştirme, Coolify
+  dağıtımı ve `/health/schema` kontrolü önceden onaylıdır (kullanıcı: "Push+PR+merge, Play hariç"). Play yüklemesi bu
+  istisnanın dışındadır. Aynı yasaklar geçerli; Mikro'ya yazım yok.
+
 ## 3. Test / build
 
 - .NET: `dotnet build ErpBridge.sln -c Debug` (0 uyarı / 0 hata) + `dotnet test ErpBridge.sln`

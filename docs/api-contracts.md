@@ -286,11 +286,30 @@ Kullanıcı ve firma her zaman jeton'dan gelir; gövdeden asla. Sunucu belgeyi o
 
 | Uç | Kim | Gövde / yanıt |
 |---|---|---|
-| `GET /preferences` | herkes | `{ version, updatedAtUtc?, data? }` — hiç kaydedilmediyse `version: 0`, `data: null` |
+| `GET /preferences` | herkes | `{ version, updatedAtUtc?, data?, base }` — hiç kaydedilmediyse `version: 0`, `data: null`. `base = { data, locks, stamp }`: kişinin rollerinin varsayılanları ve ona uygulanan bütün kilitler (aşağıda) |
 | `PUT /preferences` | herkes | gövde `{ "data": { … } }` — `data` JSON nesnesi olmalı, en çok 16 384 karakter; yanıt güncel `{ version, updatedAtUtc, data }`. Her kayıt `version`'u 1 artırır (belgenin tamamı yer değiştirir). |
 
 Ret: `400 INVALID_PREFERENCES` (gövde nesne değil / `data` nesne değil / tavan aşıldı). Telefon yerelde bekleyen değişikliği kazandırır,
 yoksa sunucudaki daha yüksek `version`'u alır; uç yoksa (eski sunucu, 404) tercihler yalnız telefonda kalır.
+
+**Katmanlar (KB kural 35):** fabrika (telefon) < rol varsayılanı < kişinin kendi belgesi < kilit. Rol varsayılanları ve kilitler **düz**
+JSON nesnesidir: ayar yolu → değer (`"sales.viewMode": "Grid"`); bir listenin tek üyesi `yol#üye` (`"home.visibleModules#reports": false`).
+Sunucu yolları yorumlamaz, yalnız birleştirir: roller düşük öncelikten yükseğe (ADMIN > MANAGER > ACCOUNTING > WAREHOUSE > SALES; çakışmada
+yüksek kazanır), kişinin kendi kilitleri en son. `stamp` (`"MANAGER:0,SALES:4|u:2"`) rol şablonu sürümlerinden ve kişinin kilit sürümünden
+üretilir; değişince telefon `base`'i yeniler.
+
+Yönetici uçları (`/api/v1/android/account`, yalnız ADMIN, yalnız kendi firmasının silinmemiş kullanıcısı; değilse `403 ADMIN_REQUIRED` /
+`404 USER_NOT_FOUND`):
+
+| Uç | Gövde / yanıt |
+|---|---|
+| `GET /users/{id}/preferences` | `{ userId, username, fullName, roles[], version, updatedAtUtc?, updatedByName?, updatedByClient?, data?, locks, roleBase: { data, locks, stamp } }` |
+| `PUT /users/{id}/preferences` | `{ data: {…}, locks?: {…}, expectedVersion? }` — belge yer değiştirir, `version` artar; `locks` verilip değiştiyse kilit sürümü de artar, verilmezse kilitler kalır. `expectedVersion` tutmazsa `409 PREFERENCES_CONFLICT`, hiçbir şey değişmez |
+| `POST /users/{id}/preferences/copy` | `{ targetUserIds: [], includeLocks }` → `{ copied }`. Kaynağın belgesi (istenirse kilitleri) hedeflere tek kayıtta; kaynak hiç kaydetmediyse hedefler boş belge alır (rol varsayılanlarına döner). Bilinmeyen hedef → 404, kimse değişmez |
+| `GET /roles/view-preferences` | `[{ role, data, locks, version, updatedAtUtc? }]` — bütün roller, öncelik sırasıyla |
+| `PUT /roles/{role}/view-preferences` | `{ data?, locks?, expectedVersion? }` — ikisi de düz nesne (verilmeyen `{}`); bilinmeyen rol `400 INVALID_ROLE`, sürüm tutmazsa `409` |
+
+Kişinin kendi belgesi ve her katman en çok 16 384 karakter; nesne olmayan gövde `400 INVALID_PREFERENCES`.
 
 ## Kullanıcı yetkileri — `/api/v1/android/account/…permissions` (GOAL_YETKILER)
 

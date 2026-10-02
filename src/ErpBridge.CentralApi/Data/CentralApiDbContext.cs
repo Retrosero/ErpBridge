@@ -181,6 +181,9 @@ public sealed class CentralApiDbContext : DbContext
     /// <summary>A phone user's view preferences (one JSON document per user).</summary>
     public DbSet<MobileUserPreference> MobileUserPreferences => Set<MobileUserPreference>();
 
+    /// <summary>A role's default view settings and locks for one company (Görünüm şablonları).</summary>
+    public DbSet<TenantRoleViewPreference> TenantRoleViewPreferences => Set<TenantRoleViewPreference>();
+
     // GOAL_HEDEF_RUT: satış ekipleri/bölgeleri ve hedefler; yalnız merkezde, ERP'ye yazılmaz.
     public DbSet<SalesTeam> SalesTeams => Set<SalesTeam>();
 
@@ -494,7 +497,19 @@ public sealed class CentralApiDbContext : DbContext
             b.ToTable("mobile_user_preferences");
             b.HasKey(x => x.UserId);
             b.Property(x => x.Json).IsRequired().HasColumnType("jsonb");
+            b.Property(x => x.LocksJson).IsRequired().HasColumnType("jsonb").HasDefaultValue("{}");
+            b.Property(x => x.UpdatedByClient).HasMaxLength(16);
             b.HasOne(x => x.User).WithOne().HasForeignKey<MobileUserPreference>(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TenantRoleViewPreference>(b =>
+        {
+            b.ToTable("tenant_role_view_preferences");
+            b.HasKey(x => new { x.TenantId, x.Role });
+            b.Property(x => x.Role).IsRequired().HasMaxLength(16);
+            b.Property(x => x.Json).IsRequired().HasColumnType("jsonb");
+            b.Property(x => x.LocksJson).IsRequired().HasColumnType("jsonb");
+            b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<PermissionChange>(b =>
