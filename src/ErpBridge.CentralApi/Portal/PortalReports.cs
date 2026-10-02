@@ -52,6 +52,9 @@ public static class PortalReports
     /// <summary>The Istanbul wall-clock time of a server time: what a phone in Turkey writes as a document's <c>occurredAt</c>.</summary>
     public static DateTime IstanbulTime(DateTimeOffset instant) => TimeZoneInfo.ConvertTime(instant, Istanbul).DateTime;
 
+    /// <summary>Istanbul's UTC offset at a wall-clock time (a panel entry's ISO stamp, GOAL_PANEL_GIRIS).</summary>
+    public static TimeSpan IstanbulOffset(DateTime wallClock) => Istanbul.GetUtcOffset(DateTime.SpecifyKind(wallClock, DateTimeKind.Unspecified));
+
     /// <summary>The UTC moment an Istanbul day starts; <c>day + 1</c> gives its (exclusive) end.</summary>
     public static DateTimeOffset IstanbulDayStartUtc(DateOnly day) =>
         new(TimeZoneInfo.ConvertTimeToUtc(day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified), Istanbul), TimeSpan.Zero);
