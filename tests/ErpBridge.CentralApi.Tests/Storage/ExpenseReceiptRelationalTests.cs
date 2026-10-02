@@ -146,6 +146,49 @@ public sealed class ExpenseReceiptRelationalTests : IClassFixture<StorageCentral
     }
 
     [Fact]
+    public async Task Parallel_uploads_to_one_document_never_go_past_the_limit()
+    {
+        var company = await StorageTestCompany.CreateAsync(_factory);
+        var token = company["ali"].Token;
+        var doc = "K-" + Guid.NewGuid();
+        for (var i = 0; i < 4; i++) (await UploadAsync(token, doc, Guid.NewGuid(), Jpeg)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 6).Select(_ => Task.Run(() => UploadAsync(token, doc, Guid.NewGuid(), Jpeg))));
+
+        results.Count(r => r.StatusCode == HttpStatusCode.OK).Should().Be(1);
+        results.Where(r => r.StatusCode != HttpStatusCode.OK).Should().OnlyContain(r => r.StatusCode == HttpStatusCode.Conflict);
+        (await ReadAsync(db => db.ExpenseAttachments.CountAsync(a => a.DocumentExternalId == doc))).Should().Be(5);
+        (await ReadAsync(db => db.StoredFiles.CountAsync(f => f.OwnerKey == doc && f.Status == StoredFileStatuses.Active))).Should().Be(5,
+            "a refused upload's file is purged");
+    }
+
+    [Fact]
+    public async Task A_file_whose_record_is_gone_is_trashed_by_the_daily_sweep()
+    {
+        var company = await StorageTestCompany.CreateAsync(_factory);
+        var doc = "K-" + Guid.NewGuid();
+        var id = Guid.NewGuid();
+        (await UploadAsync(company["ali"].Token, doc, id, Jpeg)).StatusCode.Should().Be(HttpStatusCode.OK);
+        var kept = Guid.NewGuid();
+        (await UploadAsync(company["ali"].Token, doc, kept, Jpeg)).StatusCode.Should().Be(HttpStatusCode.OK);
+        var file = await FileOfAsync(id);
+        // The record was deleted but trashing its file failed afterwards: the file is still active.
+        await SeedAsync(db => db.ExpenseAttachments.Single(a => a.Id == id).IsDeleted = true);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var maintenance = scope.ServiceProvider.GetRequiredService<StorageMaintenance>();
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            (await maintenance.TrashUnreferencedAsync(now, default)).Should().Be(0, "a fresh file may still be waiting for its record");
+            (await maintenance.TrashUnreferencedAsync(now + (long)StorageMaintenance.UnreferencedGrace.TotalMilliseconds + 1000, default))
+                .Should().BeGreaterThanOrEqualTo(1);
+        }
+
+        (await ReadAsync(db => db.StoredFiles.AsNoTracking().SingleAsync(f => f.Id == file.Id))).Status.Should().Be(StoredFileStatuses.Trashed);
+        (await FileOfAsync(kept)).Status.Should().Be(StoredFileStatuses.Active, "a file a live record points at stays");
+    }
+
+    [Fact]
     public async Task The_panel_lists_the_receipts_with_their_document_and_a_short_address()
     {
         var company = await StorageTestCompany.CreateAsync(_factory);

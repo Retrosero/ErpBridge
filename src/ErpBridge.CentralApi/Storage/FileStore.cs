@@ -266,8 +266,8 @@ public sealed partial class FileStore
 
     /// <summary>
     /// Trashes the files of a record a user just deleted (restorable for the trash period). Called after the record's own
-    /// commit: the delete has happened, so a file that cannot be trashed now is logged and left to the clean-up (S9),
-    /// which finds files no record points at.
+    /// commit: the delete has happened, so a file that cannot be trashed now is logged and left to the daily sweep
+    /// (<see cref="StorageMaintenance.TrashUnreferencedAsync"/>), which trashes active files no live record points at.
     /// </summary>
     public async Task TrashAllAsync(Guid tenantId, IEnumerable<Guid> fileIds, Guid? userId, CancellationToken ct)
     {

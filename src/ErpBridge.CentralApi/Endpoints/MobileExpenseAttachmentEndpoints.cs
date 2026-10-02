@@ -95,8 +95,7 @@ public static class MobileExpenseAttachmentEndpoints
                 return Error(StatusCodes.Status403Forbidden, "EXPENSE_FORBIDDEN", "Bu belgeye fiş ekleyemezsiniz.");
         }
         var count = await db.ExpenseAttachments.CountAsync(a => a.TenantId == tenantId && a.DocumentExternalId == docId && !a.IsDeleted, ct);
-        if (count >= MaxPerDocument)
-            return Error(StatusCodes.Status409Conflict, "EXPENSE_ATTACHMENT_LIMIT", $"Bir belgeye en çok {MaxPerDocument} fiş eklenebilir.");
+        if (count >= MaxPerDocument) return LimitReached();
 
         var stored = await files.PutAsync(tenantId, ExpenseAttachmentKinds.AreaOf(receiptKind), ExpenseReceipts.StoredFileOwnerType, docId,
             StoredFileVariants.Original, type, data, user.Id, ct);
@@ -116,10 +115,21 @@ public static class MobileExpenseAttachmentEndpoints
             CreatedByUserId = user.Id,
             CreatedByName = Clip(user.FullName, 120),
         };
-        db.ExpenseAttachments.Add(receipt);
         try
         {
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            // The company's counter row is the lock: two uploads to one document at once count one after the other, so
+            // both cannot see four receipts and make six.
+            await db.TenantStorage.Where(s => s.TenantId == tenantId).ExecuteUpdateAsync(u => u.SetProperty(s => s.UpdatedAtMs, s => s.UpdatedAtMs), ct);
+            if (await db.ExpenseAttachments.CountAsync(a => a.TenantId == tenantId && a.DocumentExternalId == docId && !a.IsDeleted, ct) >= MaxPerDocument)
+            {
+                await transaction.RollbackAsync(ct);
+                await files.PurgeAllAsync(tenantId, [file.Id], ct);
+                return LimitReached();
+            }
+            db.ExpenseAttachments.Add(receipt);
             await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
         }
         catch (DbUpdateException)
         {
@@ -132,6 +142,9 @@ public static class MobileExpenseAttachmentEndpoints
         }
         return JsonResults.Ok(ExpenseReceipts.ToDto(receipt));
     }
+
+    private static IResult LimitReached() =>
+        Error(StatusCodes.Status409Conflict, "EXPENSE_ATTACHMENT_LIMIT", $"Bir belgeye en çok {MaxPerDocument} fiş eklenebilir.");
 
     private static async Task<IResult> DownloadAsync(string docId, Guid id, HttpContext http, [FromServices] CentralApiDbContext db,
         [FromServices] FileStore files, [FromServices] IObjectStore store, CancellationToken ct)
