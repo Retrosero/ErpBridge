@@ -53,7 +53,7 @@ else
                                     <tr>
                                         <th>Ürün</th>
                                         <th class="num">Miktar</th>
-                                        <th class="num">Birim fiyat (KDV hariç)</th>
+                                        <th class="num">Birim fiyat (@(Preview?.PriceIncludesVat == true ? "KDV dahil" : "KDV hariç"))</th>
                                         <th class="num">Satır isk. %</th>
                                         <th class="num">KDV</th>
                                         <th class="num">Tutar</th>
@@ -146,12 +146,18 @@ else
         await RefreshPreviewAsync();
     }
 
-    /// <summary>A new line starts at the product's headline list price, without VAT; the supplier's price is typed over it.</summary>
+    /// <summary>
+    /// A new line starts at the product's headline list price, with or without VAT as the company's supplier prices are
+    /// (the preview tells: Codex #251); the supplier's price is typed over it.
+    /// </summary>
     private async Task ProductPickedAsync(EntryProductDto product)
     {
         var price = product.DefaultPriceListNo is { } list && product.Prices.TryGetValue(list, out var listPrice) ? listPrice : 0;
-        var includesVat = Context!.PriceLists.FirstOrDefault(l => l.No == product.DefaultPriceListNo)?.IncludesVat == true;
-        _lines.Add(new Line { Product = product, UnitPrice = includesVat && product.VatRate > 0 ? Math.Round(price / (1 + product.VatRate / 100), 2, MidpointRounding.AwayFromZero) : price });
+        var listIncludesVat = Context!.PriceLists.FirstOrDefault(l => l.No == product.DefaultPriceListNo)?.IncludesVat == true;
+        var wantsVat = Preview?.PriceIncludesVat == true;
+        var factor = 1 + product.VatRate / 100;
+        var unit = listIncludesVat == wantsVat ? price : listIncludesVat ? price / factor : price * factor;
+        _lines.Add(new Line { Product = product, UnitPrice = Math.Round(unit, 2, MidpointRounding.AwayFromZero) });
         await RefreshPreviewAsync();
     }
 
