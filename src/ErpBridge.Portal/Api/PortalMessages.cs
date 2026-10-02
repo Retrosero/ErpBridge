@@ -198,6 +198,20 @@ public static class Fmt
     /// <summary>Istanbul wall-clock time of an instant.</summary>
     public static string Time(DateTimeOffset instant) => TimeZoneInfo.ConvertTime(instant, Istanbul).ToString("dd.MM.yyyy HH:mm", Turkish);
 
+    /// <summary>A <c>datetime-local</c> input's value for Unix milliseconds, in Istanbul wall-clock time; empty for none.</summary>
+    public static string LocalInput(long? unixMs) => unixMs is { } ms
+        ? TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeMilliseconds(ms), Istanbul).ToString("yyyy-MM-dd'T'HH:mm", CultureInfo.InvariantCulture)
+        : string.Empty;
+
+    /// <summary>Unix milliseconds of a <c>datetime-local</c> value read as Istanbul wall-clock time; null for empty or unreadable.</summary>
+    public static long? FromLocalInput(string? value)
+    {
+        if (!DateTime.TryParseExact(value?.Trim(), ["yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd'T'HH:mm:ss"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var local))
+            return null;
+        local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
+        return new DateTimeOffset(local, Istanbul.GetUtcOffset(local)).ToUnixTimeMilliseconds();
+    }
+
     /// <summary>Istanbul time of day for Unix milliseconds (the phone's visit time).</summary>
     public static string ClockTime(long? unixMs) =>
         unixMs is { } ms ? TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeMilliseconds(ms), Istanbul).ToString("HH:mm", Turkish) : "—";

@@ -1,0 +1,462 @@
+@page "/gorevler"
+@inherits PortalPageBase
+@implements IDisposable
+@inject IImageShrinker Shrinker
+
+<PageTitle>Görevler — Yönetim Paneli</PageTitle>
+
+@if (!Ready)
+{
+    <PageLoading />
+}
+else
+{
+    <PageHeader Title="Görevler" Eyebrow="Ekip" Subtitle="Telefondaki görevlerin aynısı: atama, alt görev, yorum, resim ve tekrarlayan görevler." Busy="Busy">
+        <Actions>
+            <MudButton Variant="Variant.Text" Size="Size.Small" Href="gorevler/seriler" id="tasks-series-link">Tekrarlayan görevler</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Disabled="@Busy" OnClick="() => OpenEditor(null)" id="task-new">Yeni görev</MudButton>
+        </Actions>
+    </PageHeader>
+
+    @if (Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="page-alert" id="page-error">@Error</MudAlert>
+    }
+
+    @if (_summary is { } summary)
+    {
+        <div class="stat-grid stat-grid--three" id="tasks-summary">
+            <StatCard Id="tasks-open" Label="Bana atanan açık" Icon="@Icons.Material.Rounded.AssignmentInd" Value="@summary.OpenAssignedCount.ToString(Fmt.Turkish)" />
+            <StatCard Id="tasks-overdue" Label="Gecikmiş" Icon="@Icons.Material.Rounded.Alarm" Tone="warning" Value="@summary.OverdueCount.ToString(Fmt.Turkish)" />
+            <StatCard Id="tasks-unread" Label="Okunmamış bildirim" Icon="@Icons.Material.Rounded.Notifications" Value="@summary.UnreadCount.ToString(Fmt.Turkish)" />
+        </div>
+    }
+
+    <div class="ledger-toolbar" id="tasks-filter">
+        <label class="inline-field">
+            Görevler
+            <select class="portal-select portal-select--short" id="tasks-scope" value="@_scope" @onchange="e => _scope = e.Value?.ToString() ?? ScopeMine">
+                <option value="@ScopeMine">Bana atanan</option>
+                <option value="@ScopeCreated">Oluşturduğum</option>
+                <option value="@ScopeFollowing">Takip ettiğim</option>
+                @if (_summary?.CanManage == true)
+                {
+                    <option value="@ScopeAll">Tümü</option>
+                }
+            </select>
+        </label>
+        <label class="inline-field">
+            Durum
+            <select class="portal-select portal-select--short" id="tasks-status" value="@_status" @onchange="e => _status = e.Value?.ToString() ?? StatusOpen">
+                <option value="OPEN">Açık</option>
+                <option value="DONE">Tamamlanan</option>
+                <option value="CANCELLED">İptal</option>
+                <option value="">Hepsi</option>
+            </select>
+        </label>
+        <input class="portal-input" id="tasks-search" placeholder="Başlık ya da cari" value="@_search" @oninput="e => _search = e.Value?.ToString() ?? string.Empty" />
+    </div>
+
+    @if (Visible.Count == 0)
+    {
+        <EmptyState Title="Görev yok" Hint="Seçili süzgece uyan görev yok." />
+    }
+    else
+    {
+        <MudPaper Outlined="true" Class="panel panel--table">
+            <div class="table-scroll">
+                <table class="data-table data-table--plain" id="tasks-table">
+                    <thead>
+                        <tr><th>Görev</th><th>Öncelik</th><th>Bitiş</th><th>Atanan</th><th>Cari</th><th>Durum</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var task in Visible)
+                        {
+                            <tr data-task="@task.Id" class="@(IsOverdue(task) ? "is-overdue" : null)" style="cursor: pointer" @onclick="() => OpenDetailAsync(task.Id)">
+                                <td class="cell-title">@task.Title@(task.Subtasks.Length > 0 ? $" ({task.Subtasks.Count(s => s.IsDone)}/{task.Subtasks.Length})" : string.Empty)</td>
+                                <td>@TaskText.Priority(task.Priority)</td>
+                                <td>@TaskText.When(task.DueAtMs)</td>
+                                <td>@string.Join(", ", task.Assignees.Select(a => a.Name))</td>
+                                <td>@(task.CustomerName ?? task.CustomerCode ?? "—")</td>
+                                <td>@TaskText.Status(task.Status)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </MudPaper>
+    }
+
+    <DetailSheet Id="task-detail-sheet" Open="_detail is not null" Busy="Busy" Eyebrow="Görev" Title="@(_detail?.Title ?? string.Empty)" OnClose="CloseDetail">
+        <ChildContent>
+            @if (_detail is { } detail)
+            {
+                <div class="stack-form" id="task-detail">
+                    <div class="field-hint">@TaskText.Status(detail.Status) · @TaskText.Priority(detail.Priority) · oluşturan @detail.CreatedByName · @TaskText.When(detail.CreatedAtMs)</div>
+                    @if (!string.IsNullOrWhiteSpace(detail.Description))
+                    {
+                        <p id="task-description" style="white-space: pre-wrap">@detail.Description</p>
+                    }
+                    <dl class="print-facts">
+                        <dt>Başlangıç</dt><dd>@TaskText.When(detail.StartAtMs)</dd>
+                        <dt>Bitiş</dt><dd>@TaskText.When(detail.DueAtMs)</dd>
+                        <dt>Atanan</dt><dd>@string.Join(", ", detail.Assignees.Select(a => a.Name))</dd>
+                        <dt>Takipçi</dt><dd>@(detail.Followers.Length == 0 ? "—" : string.Join(", ", detail.Followers.Select(f => f.Name)))</dd>
+                        <dt>Cari</dt><dd>@(detail.CustomerName ?? detail.CustomerCode ?? "—")@(detail.VisitReminder ? " · ziyarette hatırlat" : string.Empty)</dd>
+                        @if (detail.RequiresPhoto)
+                        {
+                            <dt>Fotoğraf</dt><dd>Tamamlamak için fotoğraf gerekli</dd>
+                        }
+                    </dl>
+
+                    <span class="field-label">Alt görevler</span>
+                    <ul class="pick-list" id="task-subtasks">
+                        @foreach (var subtask in detail.Subtasks.OrderBy(s => s.SortOrder))
+                        {
+                            <li class="pick-item" data-subtask="@subtask.Id">
+                                <label style="display: flex; gap: 8px; align-items: center">
+                                    <input type="checkbox" checked="@subtask.IsDone" disabled="@(!detail.CanWork || Busy)" @onchange="e => ToggleSubtaskAsync(subtask, e.Value is true)" />
+                                    <span>@subtask.Title@(subtask.AssigneeName is { } who ? $" — {who}" : string.Empty)</span>
+                                    @if (detail.CanEdit)
+                                    {
+                                        <button type="button" class="link-button subtask-delete" disabled="@Busy" @onclick="() => DeleteSubtaskAsync(subtask)">Sil</button>
+                                    }
+                                </label>
+                            </li>
+                        }
+                    </ul>
+                    @if (detail.CanEdit)
+                    {
+                        <div class="document-search">
+                            <input class="portal-input" id="task-subtask-new" maxlength="300" placeholder="Yeni alt görev" value="@_newSubtask" @onchange="e => _newSubtask = e.Value?.ToString() ?? string.Empty" />
+                            <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="AddSubtaskAsync" id="task-subtask-add">Ekle</MudButton>
+                        </div>
+                    }
+
+                    <span class="field-label">Resimler</span>
+                    <div class="task-pictures" id="task-pictures" style="display: flex; flex-wrap: wrap; gap: 8px">
+                        @foreach (var attachment in detail.Attachments)
+                        {
+                            <figure data-attachment="@attachment.Id" style="margin: 0">
+                                @if (_pictures.TryGetValue(attachment.Id, out var src))
+                                {
+                                    <a href="@src" target="_blank" rel="noopener"><img src="@src" alt="Görev resmi" style="width: 96px; height: 96px; object-fit: cover; border-radius: 8px" /></a>
+                                }
+                                else
+                                {
+                                    <span class="field-hint">Yükleniyor…</span>
+                                }
+                                <figcaption class="field-hint">@attachment.UploadedByName
+                                    @if (detail.CanEdit || attachment.UploadedByUserId == Session.UserId)
+                                    {
+                                        <button type="button" class="link-button picture-delete" disabled="@Busy" @onclick="() => DeletePictureAsync(attachment)">Sil</button>
+                                    }
+                                </figcaption>
+                            </figure>
+                        }
+                    </div>
+                    @if (detail.CanWork && detail.Attachments.Length < MaxPictures)
+                    {
+                        <InputFile id="task-picture-input" accept="image/jpeg,image/png,image/webp" OnChange="UploadPictureAsync" disabled="@Busy" />
+                    }
+
+                    <span class="field-label">Yorumlar (@detail.Comments.Length)</span>
+                    <ul class="pick-list" id="task-comments">
+                        @foreach (var comment in detail.Comments.OrderBy(c => c.CreatedAtMs))
+                        {
+                            <li class="pick-item"><b>@comment.AuthorName</b> <span class="cell-sub">@TaskText.When(comment.CreatedAtMs)</span><div style="white-space: pre-wrap">@comment.Text</div></li>
+                        }
+                    </ul>
+                    <div class="document-search">
+                        <textarea class="portal-input" id="task-comment-new" rows="2" maxlength="2000" placeholder="Yorum yazın" @onchange="e => _newComment = e.Value?.ToString() ?? string.Empty">@_newComment</textarea>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@Busy" OnClick="AddCommentAsync" id="task-comment-add">Gönder</MudButton>
+                    </div>
+
+                    @if (detail.Events.Length > 0)
+                    {
+                        <details id="task-history"><summary class="field-label">Geçmiş</summary>
+                            <ul class="pick-list">
+                                @foreach (var change in detail.Events.OrderByDescending(e => e.OccurredAtMs))
+                                {
+                                    <li class="pick-item"><span class="cell-sub">@TaskText.When(change.OccurredAtMs) · @change.ActorName</span> @change.Action@(change.Detail is { } more ? ": " + more : string.Empty)</li>
+                                }
+                            </ul>
+                        </details>
+                    }
+                </div>
+            }
+        </ChildContent>
+        <Footer>
+            @if (_detail is { } footer)
+            {
+                @if (footer.CanEdit)
+                {
+                    <MudButton Variant="Variant.Text" Color="Color.Error" Disabled="@Busy" OnClick="DeleteTaskAsync" id="task-delete">Sil</MudButton>
+                    @if (footer.Status == "OPEN")
+                    {
+                        <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="@(() => SimpleOpAsync("cancel_task"))" id="task-cancel">İptal et</MudButton>
+                    }
+                    <MudButton Variant="Variant.Outlined" Disabled="@Busy" OnClick="() => OpenEditor(footer)" id="task-edit">Düzenle</MudButton>
+                }
+                <span style="flex: 1"></span>
+                @if (footer.CanWork && footer.Status == "OPEN")
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" OnClick="@(() => SimpleOpAsync("complete_task"))" id="task-complete">Tamamla</MudButton>
+                }
+                else if (footer.CanWork && footer.Status != "OPEN")
+                {
+                    <MudButton Variant="Variant.Outlined" Disabled="@Busy" OnClick="@(() => SimpleOpAsync("reopen_task"))" id="task-reopen">Yeniden aç</MudButton>
+                }
+            }
+        </Footer>
+    </DetailSheet>
+
+    <DetailSheet Id="task-edit-sheet" Open="_editor is not null" Busy="Busy" Eyebrow="Görev" Title="@(_editor?.TaskId is null ? "Yeni görev" : "Görevi düzenle")" OnClose="() => _editor = null">
+        <ChildContent>
+            @if (_editor is { } form)
+            {
+                <TaskEditor Form="form" People="_people" CanManage="@(_summary?.CanManage == true)" Me="Session.UserId" Busy="Busy" />
+            }
+        </ChildContent>
+        <Footer>
+            <span style="flex: 1"></span>
+            <MudButton Variant="Variant.Text" Disabled="@Busy" OnClick="() => _editor = null">Vazgeç</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@Busy" OnClick="SaveEditorAsync" id="task-save">Kaydet</MudButton>
+        </Footer>
+    </DetailSheet>
+}
+
+@code {
+    protected override PortalArea Requires => PortalArea.Tasks;
+
+    private const string StatusOpen = "OPEN";
+    private const string ScopeMine = "mine";
+    private const string ScopeCreated = "created";
+    private const string ScopeFollowing = "following";
+    private const string ScopeAll = "all";
+    private const int MaxPictures = 10;
+    private const int MaxPictureBytes = 2 * 1024 * 1024;
+
+    private readonly Dictionary<Guid, TaskDto> _tasks = [];
+    private readonly Dictionary<Guid, string> _pictures = [];
+    private long _latestSeq;
+    private TaskSummaryDto? _summary;
+    private TaskPersonDto[] _people = [];
+    private TaskDetailDto? _detail;
+    private TaskEditorForm? _editor;
+    private string _scope = ScopeMine;
+    private string _status = "OPEN";
+    private string _search = string.Empty;
+    private string _newSubtask = string.Empty;
+    private string _newComment = string.Empty;
+    private readonly CancellationTokenSource _live = new();
+    private bool _disposed;
+
+    private List<TaskDto> Visible => [.. _tasks.Values
+        .Where(t => !t.IsDeleted)
+        .Where(t => _status.Length == 0 || t.Status == _status)
+        .Where(t => _scope switch
+        {
+            ScopeCreated => t.CreatedByUserId == Session.UserId,
+            ScopeFollowing => t.Followers.Any(f => f.UserId == Session.UserId),
+            ScopeAll => true,
+            _ => t.Assignees.Any(a => a.UserId == Session.UserId) || t.Subtasks.Any(s => s.AssigneeUserId == Session.UserId),
+        })
+        .Where(t => _search.Length == 0 || Contains(t.Title, _search) || Contains(t.CustomerName, _search) || Contains(t.CustomerCode, _search))
+        .OrderBy(t => t.DueAtMs ?? long.MaxValue).ThenByDescending(t => t.UpdatedAtMs)];
+
+    protected override async Task LoadAsync()
+    {
+        _summary = await Api.TaskSummaryAsync();
+        _people = await Api.TaskPeopleAsync();
+        await ReadChangesAsync();
+        if (Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query).TryGetValue("gorev", out var id) && Guid.TryParse(id[^1], out var taskId))
+            await OpenDetailAsync(taskId);
+        _ = ListenAsync();
+    }
+
+    /// <summary>The tasks changed since the last read; the whole list on the first.</summary>
+    private async Task ReadChangesAsync()
+    {
+        TaskListResponse page;
+        do
+        {
+            page = await Api.TasksAsync(_latestSeq);
+            foreach (var task in page.Tasks) _tasks[task.Id] = task;
+            _latestSeq = Math.Max(_latestSeq, page.LatestSeq);
+        }
+        while (page.HasMore && page.Tasks.Length > 0);
+    }
+
+    /// <summary>The phone's long-poll (GOAL_GOREVLER K2): another user's change shows without a refresh.</summary>
+    private async Task ListenAsync()
+    {
+        long? version = null;
+        while (!_disposed)
+        {
+            try
+            {
+                var changed = await Api.TaskEventsAsync(version, 25, _live.Token);
+                if (_disposed) return;
+                if (changed is { } now && now != version)
+                {
+                    var first = version is null;
+                    version = now;
+                    if (!first)
+                    {
+                        await InvokeAsync(async () =>
+                        {
+                            await ReadChangesAsync();
+                            _summary = await Api.TaskSummaryAsync();
+                            if (_detail is { } open) _detail = await Api.TaskAsync(open.Id);
+                            StateHasChanged();
+                        });
+                    }
+                }
+                await Task.Delay(TimeSpan.FromSeconds(1), _live.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex) when (ex is PortalApiException or HttpRequestException or SessionEndedException)
+            {
+                // The page keeps what it has; a session that ended shows on the next action.
+                try { await Task.Delay(TimeSpan.FromSeconds(15), _live.Token); } catch (OperationCanceledException) { return; }
+            }
+        }
+    }
+
+    private async Task OpenDetailAsync(Guid id) => await RunAsync(async () =>
+    {
+        _detail = await Api.TaskAsync(id);
+        _newSubtask = string.Empty;
+        _newComment = string.Empty;
+        await LoadPicturesAsync(_detail);
+    });
+
+    private void CloseDetail() => _detail = null;
+
+    /// <summary>The browser cannot send the token: pictures come through the circuit and show as data addresses.</summary>
+    private async Task LoadPicturesAsync(TaskDetailDto detail)
+    {
+        foreach (var attachment in detail.Attachments.Where(a => !_pictures.ContainsKey(a.Id)))
+        {
+            var (bytes, type) = await Api.TaskAttachmentAsync(detail.Id, attachment.Id);
+            _pictures[attachment.Id] = $"data:{type};base64,{Convert.ToBase64String(bytes)}";
+        }
+    }
+
+    /// <summary>Sends the changes; a refused one shows its reason, the task list and the open task are read again.</summary>
+    private async Task<bool> SendAsync(params TaskOp[] ops)
+    {
+        var applied = false;
+        await RunAsync(async () =>
+        {
+            var answer = await Api.TaskOpsAsync(ops);
+            foreach (var task in answer.Tasks) _tasks[task.Id] = task;
+            var refused = answer.Results.FirstOrDefault(r => r.Status == "rejected");
+            if (refused is not null) Error = refused.Message ?? "İşlem yapılamadı.";
+            applied = refused is null;
+            if (_detail is { } open && _tasks.ContainsKey(open.Id) && !_tasks[open.Id].IsDeleted) _detail = await Api.TaskAsync(open.Id);
+            _summary = await Api.TaskSummaryAsync();
+        });
+        return applied;
+    }
+
+    private Task SimpleOpAsync(string type) => SendAsync(new TaskOp { Type = type, TaskId = _detail!.Id });
+
+    private async Task DeleteTaskAsync()
+    {
+        if (await SendAsync(new TaskOp { Type = "delete_task", TaskId = _detail!.Id }))
+        {
+            _tasks.Remove(_detail.Id);
+            _detail = null;
+        }
+    }
+
+    private Task ToggleSubtaskAsync(TaskSubtaskDto subtask, bool done) =>
+        SendAsync(new TaskOp { Type = "toggle_subtask", TaskId = _detail!.Id, SubtaskId = subtask.Id, IsDone = done });
+
+    private Task DeleteSubtaskAsync(TaskSubtaskDto subtask) =>
+        SendAsync(new TaskOp { Type = "delete_subtask", TaskId = _detail!.Id, SubtaskId = subtask.Id });
+
+    private async Task AddSubtaskAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newSubtask)) return;
+        if (await SendAsync(new TaskOp
+        {
+            Type = "add_subtask", TaskId = _detail!.Id, SubtaskId = Guid.NewGuid(), Title = _newSubtask.Trim(),
+            SortOrder = _detail.Subtasks.Length == 0 ? 0 : _detail.Subtasks.Max(s => s.SortOrder) + 1,
+        })) _newSubtask = string.Empty;
+    }
+
+    private async Task AddCommentAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newComment)) return;
+        if (await SendAsync(new TaskOp { Type = "add_comment", TaskId = _detail!.Id, CommentId = Guid.NewGuid(), Text = _newComment.Trim() }))
+            _newComment = string.Empty;
+    }
+
+    private async Task UploadPictureAsync(InputFileChangeEventArgs e)
+    {
+        var detail = _detail!;
+        await RunAsync(async () =>
+        {
+            // The phone's size (~1600 px, well under the server's 2 MB).
+            var shrunk = await Shrinker.ShrinkAsync(e.File, 1600, MaxPictureBytes);
+            if (shrunk is null)
+            {
+                Error = "Resim okunamadı ya da 2 MB'a sığmadı.";
+                return;
+            }
+            await Api.UploadTaskAttachmentAsync(detail.Id, Guid.NewGuid(), shrunk.Content, shrunk.ContentType);
+            _detail = await Api.TaskAsync(detail.Id);
+            await LoadPicturesAsync(_detail);
+        });
+    }
+
+    private async Task DeletePictureAsync(TaskAttachmentDto attachment)
+    {
+        var detail = _detail!;
+        await RunAsync(async () =>
+        {
+            await Api.DeleteTaskAttachmentAsync(detail.Id, attachment.Id);
+            _pictures.Remove(attachment.Id);
+            _detail = await Api.TaskAsync(detail.Id);
+        });
+    }
+
+    private void OpenEditor(TaskDto? task) => _editor = task is null
+        ? TaskEditorForm.New(Session.UserId)
+        : TaskEditorForm.From(task);
+
+    private async Task SaveEditorAsync()
+    {
+        var form = _editor!;
+        if (string.IsNullOrWhiteSpace(form.Title))
+        {
+            Error = "Başlık girin.";
+            return;
+        }
+        var ops = form.ToOps();
+        if (await SendAsync([.. ops]))
+        {
+            _editor = null;
+            if (form.TaskId is null && ops.FirstOrDefault()?.TaskId is { } created) await OpenDetailAsync(created);
+        }
+    }
+
+    private static bool IsOverdue(TaskDto task) =>
+        task.Status == "OPEN" && task.DueAtMs is { } due && due < DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+    private static bool Contains(string? text, string query) =>
+        text is not null && Fmt.Turkish.CompareInfo.IndexOf(text, query, System.Globalization.CompareOptions.IgnoreCase) >= 0;
+
+    public void Dispose()
+    {
+        _disposed = true;
+        // Cancel, never dispose, while the long-poll may still be reading the token.
+        _live.Cancel();
+    }
+}

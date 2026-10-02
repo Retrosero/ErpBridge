@@ -1,0 +1,130 @@
+@namespace ErpBridge.Portal.Shared.Tasks
+@implements IDisposable
+@inject PortalApiClient Api
+@inject PortalSession Session
+@inject PortalRefreshTiming Refresh
+@inject NavigationManager Nav
+@* GOAL_PANEL_GIRIS P6: the user's notifications (tasks and catalog requests), read once a minute — the phone's inbox in the
+   app bar. There is no push: the phone polls too (GOAL_GOREVLER K2). *@
+
+<MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true" aria-label="Bildirimler" MaxHeight="420">
+    <ActivatorContent>
+        <button type="button" class="portal-user" id="notification-bell" aria-haspopup="menu" @onclick="@(e => context.ToggleAsync(e))">
+            <MudBadge Content="@_unread" Visible="@(_unread > 0)" Color="Color.Error" Overlap="true" Dot="false" Max="99">
+                <MudIcon Icon="@Icons.Material.Rounded.Notifications" />
+            </MudBadge>
+        </button>
+    </ActivatorContent>
+    <ChildContent>
+        @if (_items.Count == 0)
+        {
+            <MudMenuItem Disabled="true">Bildirim yok</MudMenuItem>
+        }
+        else
+        {
+            @if (_unread > 0)
+            {
+                <MudMenuItem OnClick="MarkAllAsync" id="notifications-read-all">Hepsini okundu say</MudMenuItem>
+            }
+            @foreach (var item in _items)
+            {
+                <MudMenuItem OnClick="() => OpenAsync(item)" Class="@(item.ReadAtMs is null ? "is-unread" : null)">
+                    <div data-notification="@item.Id" style="white-space: normal; max-width: 320px">
+                        <b>@item.Title</b>
+                        <div class="cell-sub">@item.Body</div>
+                        <div class="cell-sub">@TaskText.When(item.CreatedAtMs)</div>
+                    </div>
+                </MudMenuItem>
+            }
+        }
+    </ChildContent>
+</MudMenu>
+
+@code {
+    private const int Shown = 30;
+
+    private readonly CancellationTokenSource _live = new();
+    private readonly List<UserNotificationDto> _items = [];
+    private long _since;
+    private int _unread;
+    private bool _reading;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender) _ = WatchAsync(_live.Token);
+    }
+
+    private async Task WatchAsync(CancellationToken token)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(Refresh.Notifications);
+            do
+            {
+                await InvokeAsync(ReadAsync);
+            }
+            while (await timer.WaitForNextTickAsync(token));
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    /// <summary>The notifications since the last read (all on the first), newest kept on top.</summary>
+    private async Task ReadAsync()
+    {
+        if (_live.IsCancellationRequested || _reading || !Session.IsSignedIn) return;
+        _reading = true;
+        try
+        {
+            UserNotificationListResponse page;
+            do
+            {
+                page = await Api.NotificationsAsync(_since, _live.Token);
+                foreach (var item in page.Notifications)
+                {
+                    _items.RemoveAll(i => i.Id == item.Id);
+                    _items.Insert(0, item);
+                }
+                _since = Math.Max(_since, page.LatestSeq);
+                _unread = page.UnreadCount;
+            }
+            while (page.HasMore && page.Notifications.Length > 0);
+            if (_items.Count > Shown) _items.RemoveRange(Shown, _items.Count - Shown);
+        }
+        catch (Exception ex) when (ex is PortalApiException or SessionEndedException or HttpRequestException or TaskCanceledException)
+        {
+            // A hint only: it keeps what it has; the page deals with an ended session.
+        }
+        finally
+        {
+            _reading = false;
+        }
+        if (!_live.IsCancellationRequested) StateHasChanged();
+    }
+
+    private async Task OpenAsync(UserNotificationDto item)
+    {
+        if (item.ReadAtMs is null) await MarkAsync([item.Id]);
+        if (item.TaskId is { } task && Session.Allows(PortalArea.Tasks)) Nav.NavigateTo($"gorevler?gorev={task:D}");
+        else if (item.Kind.StartsWith("CATALOG", StringComparison.Ordinal) && Session.Allows(PortalArea.CustomerCatalog)) Nav.NavigateTo("musteri-siparisleri");
+    }
+
+    private Task MarkAllAsync() => MarkAsync(null);
+
+    private async Task MarkAsync(IReadOnlyList<Guid>? ids)
+    {
+        try
+        {
+            await Api.MarkNotificationsReadAsync(ids, _live.Token);
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            foreach (var item in _items.Where(i => ids is null || ids.Contains(i.Id))) item.ReadAtMs ??= now;
+            _unread = ids is null ? 0 : Math.Max(0, _unread - ids.Count);
+        }
+        catch (Exception ex) when (ex is PortalApiException or SessionEndedException or HttpRequestException or TaskCanceledException)
+        {
+        }
+    }
+
+    public void Dispose() => _live.Cancel();
+}

@@ -8,4 +8,7 @@ public sealed record PortalRefreshTiming
     /// forgotten tab from hammering the server; the badge also reads on every page change.
     /// </summary>
     public TimeSpan CustomerOrders { get; init; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>The app bar's notification bell (GOAL_PANEL_GIRIS P6): tasks and catalog requests alike.</summary>
+    public TimeSpan Notifications { get; init; } = TimeSpan.FromSeconds(60);
 }

@@ -48,14 +48,14 @@ public static class MobileTaskEndpoints
     private static async Task<IResult> ListAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] TaskService tasks,
         long? changedSinceSeq, int? take, CancellationToken ct)
     {
-        var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
+        var access = await AuthorizeAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         return JsonResults.Ok(await tasks.ListAsync(db, access.Tenant!.Id, access.User!, changedSinceSeq ?? 0, take, ct));
     }
 
     private static async Task<IResult> DetailAsync(Guid id, HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] TaskService tasks, CancellationToken ct)
     {
-        var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
+        var access = await AuthorizeAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         var result = await tasks.DetailAsync(db, access.Tenant!.Id, access.User!, id, ct);
         return result.Succeeded ? JsonResults.Ok(result.Value) : JsonResults.Status(result.StatusCode, result.Error);
@@ -63,21 +63,21 @@ public static class MobileTaskEndpoints
 
     private static async Task<IResult> SummaryAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] TaskService tasks, CancellationToken ct)
     {
-        var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
+        var access = await AuthorizeAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         return JsonResults.Ok(await tasks.SummaryAsync(db, access.Tenant!.Id, access.User!, ct));
     }
 
     private static async Task<IResult> PeopleAsync(HttpContext http, [FromServices] CentralApiDbContext db, CancellationToken ct)
     {
-        var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
+        var access = await AuthorizeAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         return JsonResults.Ok(await TaskService.PeopleAsync(db, access.Tenant!.Id, ct));
     }
 
     private static async Task<IResult> SeriesAsync(HttpContext http, [FromServices] CentralApiDbContext db, CancellationToken ct)
     {
-        var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
+        var access = await AuthorizeAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         return JsonResults.Ok(await TaskService.SeriesAsync(db, access.Tenant!.Id, access.User!, ct));
     }
@@ -85,7 +85,7 @@ public static class MobileTaskEndpoints
     private static async Task<IResult> OpsAsync(HttpContext http, [FromBody] TaskOpsRequest? body,
         [FromServices] CentralApiDbContext db, [FromServices] TaskService tasks, CancellationToken ct)
     {
-        var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
+        var access = await AuthorizeAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         var ops = body?.Ops ?? [];
         if (ops.Length > TaskService.MaxOpsPerBatch)
@@ -101,7 +101,7 @@ public static class MobileTaskEndpoints
     private static async Task<IResult> UploadAsync(Guid taskId, Guid attachmentId, HttpContext http,
         [FromServices] CentralApiDbContext db, [FromServices] TaskService tasks, CancellationToken ct)
     {
-        var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
+        var access = await AuthorizeAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         var max = tasks.Options.MaxAttachmentBytes;
         if (http.Request.ContentLength is { } declared && declared > max)
@@ -136,7 +136,7 @@ public static class MobileTaskEndpoints
     private static async Task<IResult> DownloadAsync(Guid taskId, Guid attachmentId, HttpContext http,
         [FromServices] CentralApiDbContext db, [FromServices] TaskService tasks, [FromServices] IObjectStore store, CancellationToken ct)
     {
-        var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
+        var access = await AuthorizeAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         var result = await tasks.ReadAttachmentAsync(db, access.Tenant!.Id, access.User!, taskId, attachmentId, ct);
         if (!result.Succeeded) return JsonResults.Status(result.StatusCode, result.Error);
@@ -150,7 +150,7 @@ public static class MobileTaskEndpoints
     private static async Task<IResult> DeleteAttachmentAsync(Guid taskId, Guid attachmentId, HttpContext http,
         [FromServices] CentralApiDbContext db, [FromServices] TaskService tasks, CancellationToken ct)
     {
-        var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
+        var access = await AuthorizeAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         var result = await tasks.DeleteAttachmentAsync(db, access.Tenant!, access.User!, taskId, attachmentId, ct);
         return result.Succeeded ? Results.NoContent() : JsonResults.Status(result.StatusCode, result.Error);
@@ -164,7 +164,7 @@ public static class MobileTaskEndpoints
     private static async Task<IResult> EventsAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] ITenantEventHub hub,
         long? version, int? wait, CancellationToken ct)
     {
-        var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
+        var access = await AuthorizeAsync(http, db, ct);
         if (access.Error is not null) return access.Error;
         var seconds = wait ?? DefaultWaitSeconds;
         if (seconds < MinWaitSeconds || seconds > MaxWaitSeconds)
@@ -188,6 +188,25 @@ public static class MobileTaskEndpoints
             if (now != current) return JsonResults.Ok(new TaskEventsResponse { Version = now });
         }
         return Results.NoContent();
+    }
+
+    /// <summary>
+    /// The user, re-checked against current state; a panel session also needs the tasks module (GOAL_PANEL_GIRIS P6, Codex
+    /// #249): hiding the panel's page is no gate. A phone session is not asked — its behaviour stays as it was (the phone
+    /// hides its own task screen). Notifications are not gated: catalog requests notify through them too.
+    /// </summary>
+    private static async Task<(Domain.Tenant? Tenant, Domain.MobileUser? User, IResult? Error)> AuthorizeAsync(HttpContext http, CentralApiDbContext db, CancellationToken ct)
+    {
+        var access = await MobileAccountEndpoints.AuthorizeAsync(http, db, requireAdmin: false, ct);
+        if (access.Error is not null || Authentication.CentralApiClaims.ClientOf(http.User) != Authentication.CentralApiClaims.PortalClient) return access;
+        var permissions = access.User!.Permissions ?? await Permissions.PermissionLoader.LoadAsync(db, access.User, ct);
+        return permissions.Can(Permissions.PermissionKeys.ModuleTasks)
+            ? access
+            : (null, null, JsonResults.Status(StatusCodes.Status403Forbidden, new ApiError
+            {
+                ErrorCode = "TASKS_MODULE_DENIED",
+                Message = "Görevler için yetkiniz yok.",
+            }));
     }
 
     private static async Task<IResult> NotificationsAsync(HttpContext http, [FromServices] CentralApiDbContext db, [FromServices] TaskService tasks,
