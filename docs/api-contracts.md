@@ -161,7 +161,7 @@ uyanır, ERP'siz firmada defter hemen işler). Panel `/ingest`'e yine **yazamaz*
   işler 200 ile döner. Defter reddederse 422 `ENTRY_BOOKING_FAILED`. Gövde hatası 400 `ENTRY_INVALID` /
   `UNKNOWN_CUSTOMER` / `UNKNOWN_PRODUCT` / `PRICE_MISSING`.
 - **Belge anahtarı** `PNL-SO-` (satış), `PNL-TH-` (tahsilat; ERP'siz firmada yöntem başına `-1`, `-2`…), `PNL-TD-`
-  (tediye), `PNL-GD-` (gider) + `operationId`; `mobileDocumentId` ile aynı.
+  (tediye), `PNL-GD-` (gider), `PNL-PR-` (alış), `PNL-SR-` (iade) + `operationId`; `mobileDocumentId` ile aynı.
 
 | Uç | Açıklama |
 |---|---|
@@ -171,6 +171,11 @@ uyanır, ERP'siz firmada defter hemen işler). Panel `/ingest`'e yine **yazamaz*
 | `POST /sale[/preview]` | `customerCode`, `priceListNo?` (yoksa ürün başına başlık listesi), `lines[{productCode, quantity (tam sayı), lineDiscountPercent, note?}]`, `generalDiscountPercent`, `paymentType` (`Cari Borç`/`Nakit`/`Kredi Kartı`), `bankCode?` (kart; ERP'de banka listesi varsa zorunlu), `note?` |
 | `POST /collection[/preview]` | `customerCode`, `description?`, `payments[{method (cash/card/transfer/cheque/note), amount, bankCode?, bankName?, installments?, surchargeAmount?, reference?, documentNo?, dueDate? (yyyy-MM-dd; çek/senette no + vade zorunlu)}]` |
 | `POST /disbursement[/preview]` | `customerCode`, `amount`, `paymentType` (`Nakit`/`EFT / Havale`), `bankCode?` (ERP), `bankName?` (ERP'siz), `description?` |
+| `POST /purchase[/preview]` | `supplierCode`, `series?`, `sequenceNo?` (bilgi amaçlı `invoiceNo`), `lines[{productCode, quantity (tam sayı), unitPrice (KDV hariç, iskontosuz), lineDiscountPercents[] (≤ 6)}]`, `generalDiscountPercents[]` (≤ 6). Peşin "Nakit" kapalı fatura (telefonla aynı) |
+| `GET /returnables?customerCode=` | Müşteriye satılmış ürünler (`stockTransactions` tip 1) ve satış fiyatları (`prices[{unitPrice, lastSold}]`, en yeni üstte) |
+| `POST /return[/preview]` | `customerCode`, `lines[{productCode, quantity, unitPrice (satıldığı fiyatlardan biri), conditionPercent (0–1), reason?}]`, `settlementMethod` (`Cari Alacak`/`Nakit`/`Banka İade`), `bankCode?` (ERP), `bankName?` (ERP'siz). Satılmamış ürün ya da fiyat 400 `NOT_SOLD_TO_CUSTOMER` |
+| `GET /documents/{jobId}` | Girişin durumu (`pending`/`retrying`/`written`/`failed`), `erpDocumentNo`, `message`, cari, tutar, sahip, giren, belge gövdesi (`payload`). Türün modülü yoksa 404 `ENTRY_NOT_FOUND` |
+| `GET /documents?all=&page=` | Son girişler (50'şer), en yeni üstte; kişinin kendi girişleri, yönetici `all=true` ile herkesinki |
 | `POST /expense[/preview]` | `amount` (KDV dahil), `description` (zorunlu), `paymentType` (`Nakit`/`Banka`/`Kredi Kartı`); ERP'li: `expenseCardCode`, `vatAmount`, `vatPointer` (KDV > 0 ise), `accountCode?` (kasa/banka); ERP'siz: `category` (sabit türlerden) |
 
 ### Admin iş uçları (`/api/v1/admin/jobs`)
