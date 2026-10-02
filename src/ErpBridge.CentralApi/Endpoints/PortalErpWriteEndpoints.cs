@@ -188,7 +188,7 @@ public static class PortalErpWriteEndpoints
             if (string.IsNullOrEmpty(kind) || string.IsNullOrEmpty(code)) continue;
             var name = AndroidEndpoints.GetString(item, "name")?.Trim() ?? string.Empty;
             if (!byKind.TryGetValue(kind, out var items)) byKind[kind] = items = new(StringComparer.Ordinal);
-            items[code] = new PortalErpLookupItem { Code = code, Name = name };
+            items[code] = new PortalErpLookupItem { Code = code, Name = name, Rate = AndroidEndpoints.GetDecimal(item, "rate") };
         }
         return byKind;
     }

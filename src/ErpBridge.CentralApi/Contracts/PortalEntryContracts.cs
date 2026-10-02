@@ -33,6 +33,15 @@ public sealed class PortalEntryContextResponse
     public List<PortalErpLookupItem> CashAccounts { get; set; } = [];
 
     public List<PortalErpLookupItem> Banks { get; set; } = [];
+
+    /// <summary>ERP company: the expense cards (<c>MASRAF_HESAPLARI</c>) an expense is booked to.</summary>
+    public List<PortalErpLookupItem> ExpenseCards { get; set; } = [];
+
+    /// <summary>ERP company: Mikro's VAT definitions (code = pointer, <see cref="PortalErpLookupItem.Rate"/>).</summary>
+    public List<PortalErpLookupItem> VatRates { get; set; } = [];
+
+    /// <summary>Company without an ERP: the phone's fixed expense categories.</summary>
+    public List<string> ExpenseCategories { get; set; } = [];
 }
 
 public sealed class PortalEntryOwnerDto
@@ -165,6 +174,21 @@ public sealed class PortalEntryPreviewResponse
 
     /// <summary>Lines asking for more than is in stock (all warehouses together).</summary>
     public List<PortalEntryStockWarningDto> StockWarnings { get; set; } = [];
+
+    /// <summary>A collection's payments, a tediye's or an expense's one payment.</summary>
+    public List<PortalEntryPaymentDto> Payments { get; set; } = [];
+}
+
+public sealed class PortalEntryPaymentDto
+{
+    /// <summary><c>cash</c>, <c>card</c>, <c>transfer</c>, <c>cheque</c> or <c>note</c>.</summary>
+    public string Method { get; set; } = string.Empty;
+
+    /// <summary>The phone's word: Nakit, Kredi Kartı, Havale / EFT, Çek, Senet.</summary>
+    public string Label { get; set; } = string.Empty;
+
+    public decimal Amount { get; set; }
+    public string? Detail { get; set; }
 }
 
 public sealed class PortalEntryPricedLineDto
@@ -219,4 +243,98 @@ public sealed class PortalEntryDocumentDto
     public string ExternalId { get; set; } = string.Empty;
     public string DocumentType { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+}
+
+/// <summary><c>POST /api/v1/portal/entry/collection[/preview]</c>: a collection, split over several methods if need be.</summary>
+public sealed class PortalEntryCollectionRequest
+{
+    public string? OperationId { get; set; }
+    public Guid? OwnerUserId { get; set; }
+    public string? Date { get; set; }
+    public string CustomerCode { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public List<PortalEntryPaymentRequest> Payments { get; set; } = [];
+    public decimal? ExpectedTotal { get; set; }
+}
+
+/// <summary>One method of a collection (the phone's collection screen has one box per method).</summary>
+public sealed class PortalEntryPaymentRequest
+{
+    /// <summary><c>cash</c>, <c>card</c>, <c>transfer</c>, <c>cheque</c> or <c>note</c>.</summary>
+    public string Method { get; set; } = string.Empty;
+
+    public decimal Amount { get; set; }
+
+    /// <summary>ERP company: the card's or transfer's bank (a <c>bank</c> lookup); empty = the user's / company's.</summary>
+    public string? BankCode { get; set; }
+
+    /// <summary>The bank's name as it is shown (a cheque's bank, a company without an ERP's bank).</summary>
+    public string? BankName { get; set; }
+
+    public int? Installments { get; set; }
+
+    /// <summary>A card's bank surcharge: not the customer's debt, written to the description.</summary>
+    public decimal? SurchargeAmount { get; set; }
+
+    /// <summary>A card slip or a transfer receipt number.</summary>
+    public string? Reference { get; set; }
+
+    /// <summary>A cheque's or a note's number (required for them).</summary>
+    public string? DocumentNo { get; set; }
+
+    /// <summary>A cheque's or a note's due date, <c>yyyy-MM-dd</c> (required for them).</summary>
+    public string? DueDate { get; set; }
+}
+
+/// <summary><c>POST /api/v1/portal/entry/disbursement[/preview]</c>: money paid out to a customer or supplier (tediye).</summary>
+public sealed class PortalEntryDisbursementRequest
+{
+    public string? OperationId { get; set; }
+    public Guid? OwnerUserId { get; set; }
+    public string? Date { get; set; }
+    public string CustomerCode { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+
+    /// <summary><c>Nakit</c> (default) or <c>EFT / Havale</c>.</summary>
+    public string? PaymentType { get; set; }
+
+    /// <summary>ERP company: the transfer's bank (a <c>bank</c> lookup); empty = the user's / company's.</summary>
+    public string? BankCode { get; set; }
+
+    /// <summary>Company without an ERP: the bank's name.</summary>
+    public string? BankName { get; set; }
+
+    public string? Description { get; set; }
+    public decimal? ExpectedTotal { get; set; }
+}
+
+/// <summary><c>POST /api/v1/portal/entry/expense[/preview]</c>: a company expense, VAT included in the amount.</summary>
+public sealed class PortalEntryExpenseRequest
+{
+    public string? OperationId { get; set; }
+    public Guid? OwnerUserId { get; set; }
+    public string? Date { get; set; }
+    public decimal Amount { get; set; }
+
+    /// <summary>ERP company: the expense card (required).</summary>
+    public string? ExpenseCardCode { get; set; }
+
+    /// <summary>Company without an ERP: one of the fixed categories.</summary>
+    public string? Category { get; set; }
+
+    /// <summary>ERP company: the VAT inside the amount, and the Mikro VAT pointer it was picked from (required when VAT &gt; 0).</summary>
+    public decimal VatAmount { get; set; }
+
+    public int? VatPointer { get; set; }
+
+    /// <summary><c>Nakit</c> (default), <c>Banka</c> or <c>Kredi Kartı</c>.</summary>
+    public string? PaymentType { get; set; }
+
+    /// <summary>ERP company: the paying cash account (Nakit) or bank (otherwise); empty = the user's / company's.</summary>
+    public string? AccountCode { get; set; }
+
+    /// <summary>Required, as on the phone.</summary>
+    public string? Description { get; set; }
+
+    public decimal? ExpectedTotal { get; set; }
 }

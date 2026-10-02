@@ -8,6 +8,7 @@ using ErpBridge.CentralApi.PanelEntry;
 using ErpBridge.CentralApi.Permissions;
 using ErpBridge.CentralApi.Portal;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace ErpBridge.CentralApi.Endpoints;
@@ -40,6 +41,12 @@ public static class PortalEntryEndpoints
         group.MapGet("/products", ProductsAsync).WithName("PortalEntryProducts");
         group.MapPost("/sale/preview", PreviewSaleAsync).WithName("PortalEntrySalePreview");
         group.MapPost("/sale", CreateSaleAsync).WithName("PortalEntrySale");
+        group.MapPost("/collection/preview", PreviewCollectionAsync).WithName("PortalEntryCollectionPreview");
+        group.MapPost("/collection", CreateCollectionAsync).WithName("PortalEntryCollection");
+        group.MapPost("/disbursement/preview", PreviewDisbursementAsync).WithName("PortalEntryDisbursementPreview");
+        group.MapPost("/disbursement", CreateDisbursementAsync).WithName("PortalEntryDisbursement");
+        group.MapPost("/expense/preview", PreviewExpenseAsync).WithName("PortalEntryExpensePreview");
+        group.MapPost("/expense", CreateExpenseAsync).WithName("PortalEntryExpense");
         return routes;
     }
 
@@ -64,10 +71,16 @@ public static class PortalEntryEndpoints
         };
         if (!caller.IsNative)
         {
-            var lookups = await PanelEntryLookups.AllAsync(db, tenantId, ct, "warehouse", "cash", "bank");
+            var lookups = await PanelEntryLookups.AllAsync(db, tenantId, ct, "warehouse", "cash", "bank", "expense_card", "vat_rate");
             response.Warehouses = [.. lookups["warehouse"]];
             response.CashAccounts = [.. lookups["cash"]];
             response.Banks = [.. lookups["bank"]];
+            response.ExpenseCards = [.. lookups["expense_card"]];
+            response.VatRates = [.. lookups["vat_rate"].Where(r => r.Rate is not null)];
+        }
+        else
+        {
+            response.ExpenseCategories = [.. PanelEntryMoney.ExpenseCategories];
         }
         return JsonResults.Ok(response);
     }
@@ -130,37 +143,94 @@ public static class PortalEntryEndpoints
 
     // ---- sale -------------------------------------------------------------------------------
 
-    private static async Task<IResult> PreviewSaleAsync(HttpContext http, [FromBody] PortalEntrySaleRequest? body,
-        [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, [FromServices] CatalogViewService views, CancellationToken ct)
-    {
-        var (caller, error) = await PanelEntryAccess.AuthorizeAsync(http, db, PanelEntryKinds.Sale, ct);
-        if (error is not null) return error;
-        if (body is null) return Invalid(PanelEntryInvalid.Body("Gövde gerekli."));
-        var owner = await PanelEntryAccess.OwnerAsync(db, caller!, body.OwnerUserId, ct);
-        if (owner is null) return UnknownOwner();
-        var (plan, invalid) = await PanelEntrySale.PlanAsync(db, cache, views, caller!, owner, body, PreviewKey(PanelEntryKinds.Sale), DateTimeOffset.UtcNow, ct);
-        return invalid is not null ? Invalid(invalid) : JsonResults.Ok(plan!.Preview);
-    }
+    private static Task<IResult> PreviewSaleAsync(HttpContext http, [FromBody] PortalEntrySaleRequest? body,
+        [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, [FromServices] CatalogViewService views, CancellationToken ct) =>
+        PreviewAsync(http, db, PanelEntryKinds.Sale, body, body?.OwnerUserId,
+            (caller, owner, key) => PanelEntrySale.PlanAsync(db, cache, views, caller, owner, body!, key, DateTimeOffset.UtcNow, ct), ct);
 
-    private static async Task<IResult> CreateSaleAsync(HttpContext http, [FromBody] PortalEntrySaleRequest? body,
+    private static Task<IResult> CreateSaleAsync(HttpContext http, [FromBody] PortalEntrySaleRequest? body,
         [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, [FromServices] CatalogViewService views,
-        [FromServices] PanelEntryWriter writer, CancellationToken ct)
-    {
-        var (caller, error) = await PanelEntryAccess.AuthorizeAsync(http, db, PanelEntryKinds.Sale, ct);
-        if (error is not null) return error;
-        if (body is null) return Invalid(PanelEntryInvalid.Body("Gövde gerekli."));
-        if (PanelEntryKinds.ExternalId(PanelEntryKinds.Sale, body.OperationId) is not { } externalId)
-            return Invalid(PanelEntryInvalid.Body("operationId gerekli: kayıt başına bir GUID."));
-        // A save sent again after its answer was lost is the same document, whatever changed since.
-        if (await Jobs.SalesJobWriter.ExistingAsync(db, caller!.Tenant.Id, PanelEntrySale.DocumentType, externalId, ct) is { } existing)
-            return Saved([existing], idempotent: true, preview: null);
-        var owner = await PanelEntryAccess.OwnerAsync(db, caller, body.OwnerUserId, ct);
-        if (owner is null) return UnknownOwner();
-        var (plan, invalid) = await PanelEntrySale.PlanAsync(db, cache, views, caller, owner, body, externalId, DateTimeOffset.UtcNow, ct);
-        return invalid is not null ? Invalid(invalid) : await SaveAsync(http, db, writer, caller, owner, plan!, body.ExpectedTotal, ct);
-    }
+        [FromServices] PanelEntryWriter writer, CancellationToken ct) =>
+        CreateAsync(http, db, writer, PanelEntryKinds.Sale, body, body?.OperationId, body?.OwnerUserId, body?.ExpectedTotal,
+            (caller, owner, key) => PanelEntrySale.PlanAsync(db, cache, views, caller, owner, body!, key, DateTimeOffset.UtcNow, ct), ct);
+
+    // ---- money ------------------------------------------------------------------------------
+
+    private static Task<IResult> PreviewCollectionAsync(HttpContext http, [FromBody] PortalEntryCollectionRequest? body,
+        [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, CancellationToken ct) =>
+        PreviewAsync(http, db, PanelEntryKinds.Collection, body, body?.OwnerUserId,
+            (caller, owner, key) => PanelEntryMoney.CollectionAsync(db, cache, caller, owner, body!, key, DateTimeOffset.UtcNow, ct), ct);
+
+    private static Task<IResult> CreateCollectionAsync(HttpContext http, [FromBody] PortalEntryCollectionRequest? body,
+        [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, [FromServices] PanelEntryWriter writer, CancellationToken ct) =>
+        CreateAsync(http, db, writer, PanelEntryKinds.Collection, body, body?.OperationId, body?.OwnerUserId, body?.ExpectedTotal,
+            (caller, owner, key) => PanelEntryMoney.CollectionAsync(db, cache, caller, owner, body!, key, DateTimeOffset.UtcNow, ct), ct);
+
+    private static Task<IResult> PreviewDisbursementAsync(HttpContext http, [FromBody] PortalEntryDisbursementRequest? body,
+        [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, CancellationToken ct) =>
+        PreviewAsync(http, db, PanelEntryKinds.Disbursement, body, body?.OwnerUserId,
+            (caller, owner, key) => PanelEntryMoney.DisbursementAsync(db, cache, caller, owner, body!, key, DateTimeOffset.UtcNow, ct), ct);
+
+    private static Task<IResult> CreateDisbursementAsync(HttpContext http, [FromBody] PortalEntryDisbursementRequest? body,
+        [FromServices] CentralApiDbContext db, [FromServices] IMemoryCache cache, [FromServices] PanelEntryWriter writer, CancellationToken ct) =>
+        CreateAsync(http, db, writer, PanelEntryKinds.Disbursement, body, body?.OperationId, body?.OwnerUserId, body?.ExpectedTotal,
+            (caller, owner, key) => PanelEntryMoney.DisbursementAsync(db, cache, caller, owner, body!, key, DateTimeOffset.UtcNow, ct), ct);
+
+    private static Task<IResult> PreviewExpenseAsync(HttpContext http, [FromBody] PortalEntryExpenseRequest? body,
+        [FromServices] CentralApiDbContext db, CancellationToken ct) =>
+        PreviewAsync(http, db, PanelEntryKinds.Expense, body, body?.OwnerUserId,
+            (caller, owner, key) => PanelEntryMoney.ExpenseAsync(db, caller, owner, body!, key, DateTimeOffset.UtcNow, ct), ct);
+
+    private static Task<IResult> CreateExpenseAsync(HttpContext http, [FromBody] PortalEntryExpenseRequest? body,
+        [FromServices] CentralApiDbContext db, [FromServices] PanelEntryWriter writer, CancellationToken ct) =>
+        CreateAsync(http, db, writer, PanelEntryKinds.Expense, body, body?.OperationId, body?.OwnerUserId, body?.ExpectedTotal,
+            (caller, owner, key) => PanelEntryMoney.ExpenseAsync(db, caller, owner, body!, key, DateTimeOffset.UtcNow, ct), ct);
 
     // ---- shared -----------------------------------------------------------------------------
+
+    private delegate Task<(PanelEntryPlan? Plan, PanelEntryInvalid? Invalid)> Planner(PanelEntryCaller caller, MobileUser owner, string key);
+
+    private static async Task<IResult> PreviewAsync(HttpContext http, CentralApiDbContext db, PanelEntryKind kind, object? body, Guid? ownerUserId,
+        Planner plan, CancellationToken ct)
+    {
+        var (caller, error) = await PanelEntryAccess.AuthorizeAsync(http, db, kind, ct);
+        if (error is not null) return error;
+        if (body is null) return Invalid(PanelEntryInvalid.Body("Gövde gerekli."));
+        var owner = await PanelEntryAccess.OwnerAsync(db, caller!, ownerUserId, ct);
+        if (owner is null) return UnknownOwner();
+        var (planned, invalid) = await plan(caller!, owner, PreviewKey(kind));
+        return invalid is not null ? Invalid(invalid) : JsonResults.Ok(planned!.Preview);
+    }
+
+    private static async Task<IResult> CreateAsync(HttpContext http, CentralApiDbContext db, PanelEntryWriter writer, PanelEntryKind kind,
+        object? body, string? operationId, Guid? ownerUserId, decimal? expectedTotal, Planner plan, CancellationToken ct)
+    {
+        var (caller, error) = await PanelEntryAccess.AuthorizeAsync(http, db, kind, ct);
+        if (error is not null) return error;
+        if (body is null) return Invalid(PanelEntryInvalid.Body("Gövde gerekli."));
+        if (PanelEntryKinds.ExternalId(kind, operationId) is not { } key) return MissingOperation();
+        if (await ExistingAsync(db, caller!, key, ct) is { } existing) return existing;
+        var owner = await PanelEntryAccess.OwnerAsync(db, caller!, ownerUserId, ct);
+        if (owner is null) return UnknownOwner();
+        var (planned, invalid) = await plan(caller!, owner, key);
+        return invalid is not null ? Invalid(invalid) : await SaveAsync(http, db, writer, caller!, owner, planned!, expectedTotal, ct);
+    }
+
+    /// <summary>
+    /// The jobs an earlier save of the same operation wrote (its key, or its <c>-n</c> parts): a save sent again after its
+    /// answer was lost is the same entry, whatever changed since.
+    /// </summary>
+    private static async Task<IResult?> ExistingAsync(CentralApiDbContext db, PanelEntryCaller caller, string key, CancellationToken ct)
+    {
+        var parts = key + "-";
+        var jobs = await db.Jobs.AsNoTracking()
+            .Where(j => j.TenantId == caller.Tenant.Id && (j.ExternalId == key || j.ExternalId.StartsWith(parts)))
+            .OrderBy(j => j.ExternalId)
+            .ToListAsync(ct);
+        return jobs.Count == 0 ? null : Saved(jobs, idempotent: true, preview: null);
+    }
+
+    private static IResult MissingOperation() => Invalid(PanelEntryInvalid.Body("operationId gerekli: kayıt başına bir GUID."));
 
     /// <summary>Writes a planned entry: refused when something stands in its way or its total moved since the preview.</summary>
     private static async Task<IResult> SaveAsync(HttpContext http, CentralApiDbContext db, PanelEntryWriter writer, PanelEntryCaller caller,
