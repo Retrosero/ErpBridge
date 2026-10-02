@@ -424,6 +424,23 @@ public sealed class PortalApiClient(HttpClient http, PortalSession session)
     public Task<PermissionChangesResponse> PermissionChangesAsync(Guid? userId = null, CancellationToken ct = default) =>
         GetAsync<PermissionChangesResponse>("api/v1/android/account/permissions/changes" + Query(("userId", userId?.ToString())), ct);
 
+    // ---- view preferences (Siparis_Cepte KB kural 59, ErpBridge KB kural 35) ---------
+
+    public Task<UserViewPreferencesDto> UserViewPreferencesAsync(Guid userId, CancellationToken ct = default) =>
+        GetAsync<UserViewPreferencesDto>($"api/v1/android/account/users/{userId}/preferences", ct);
+
+    public Task<UserViewPreferencesDto> SaveUserViewPreferencesAsync(Guid userId, UpdateViewPreferencesRequest request, CancellationToken ct = default) =>
+        SendAsync<UserViewPreferencesDto>(HttpMethod.Put, $"api/v1/android/account/users/{userId}/preferences", request, ct);
+
+    public Task<CopyViewPreferencesResponse> CopyUserViewPreferencesAsync(Guid userId, CopyViewPreferencesRequest request, CancellationToken ct = default) =>
+        SendAsync<CopyViewPreferencesResponse>(HttpMethod.Post, $"api/v1/android/account/users/{userId}/preferences/copy", request, ct);
+
+    public Task<RoleViewPreferencesDto[]> RoleViewPreferencesAsync(CancellationToken ct = default) =>
+        GetAsync<RoleViewPreferencesDto[]>("api/v1/android/account/roles/view-preferences", ct);
+
+    public Task<RoleViewPreferencesDto> SaveRoleViewPreferencesAsync(string role, UpdateViewPreferencesRequest request, CancellationToken ct = default) =>
+        SendAsync<RoleViewPreferencesDto>(HttpMethod.Put, $"api/v1/android/account/roles/{Uri.EscapeDataString(role)}/view-preferences", request, ct);
+
     // ---- route plans (GOAL_HEDEF_RUT P4–P5) --------------------------------------
 
     public Task<RoutePlansResponse> RoutePlansAsync(CancellationToken ct = default) =>

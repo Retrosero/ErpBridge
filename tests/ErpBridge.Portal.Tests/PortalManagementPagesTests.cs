@@ -380,7 +380,10 @@ public sealed class PortalManagementPagesTests : PortalPageTestContext
         var cut = Render<Kullanicilar>();
 
         cut.WaitForAssertion(() => cut.Find("#seats").TextContent.Should().Be("3 / 5 kullanıcı hakkı"));
-        cut.Find("tr[data-user=patron]").QuerySelector("button").Should().BeNull("an administrator changes neither their own state nor their own roles");
+        // An administrator changes neither their own state nor their own roles; their own view settings they may.
+        cut.Find("tr[data-user=patron]").QuerySelectorAll("button.roles-btn, button.permissions-btn, button.active-btn").Should()
+            .BeEmpty("an administrator changes neither their own state nor their own roles");
+        cut.Find("tr[data-user=patron]").QuerySelector("button.view-prefs-btn").Should().NotBeNull();
         cut.Find("tr[data-user=ali] .active-btn").TextContent.Trim().Should().Be("Devre dışı bırak");
     }
 

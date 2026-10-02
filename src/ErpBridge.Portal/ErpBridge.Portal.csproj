@@ -25,4 +25,12 @@
     <ProjectReference Include="..\ErpBridge.Diagnostics\ErpBridge.Diagnostics.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      The phone's list of view settings (Ayarlar > Görünüm), copied from Siparis_Cepte docs/view-settings-catalog.json.
+      When the phone adds a setting, copy the file again; settings the copy does not list are kept untouched.
+    -->
+    <EmbeddedResource Include="Resources\view-settings-catalog.json" LogicalName="ErpBridge.Portal.Resources.view-settings-catalog.json" />
+  </ItemGroup>
+
 </Project>

@@ -280,7 +280,7 @@ public sealed class PortalLayoutTests : PortalPageTestContext
         cut.FindAll("#portal-nav a").Select(a => a.GetAttribute("href"))
             .Should().Equal("", "plasiyerler", "ziyaretler", "depo-performans", "hedefler", "hedefler/giris", "rut", "rut/uyum", "ekipler", "cariler", "stok", "tahsilatlar", "evraklar", "hareketler", "fisler",
                 "evraklar?yeni=sale", "evraklar?yeni=purchase", "evraklar?yeni=sale_return", "stok/sayim",
-                "muhasebe", "onaylar", "depo", "ekranlar", "kullanicilar", "yetkiler", "depolama", "denetim");
+                "muhasebe", "onaylar", "depo", "ekranlar", "kullanicilar", "yetkiler", "gorunum-sablonlari", "depolama", "denetim");
         cut.Find("#user-roles").TextContent.Should().Be("Admin · Muhasebe");
         cut.Find("#session-scope").TextContent.Should().Contain("sekmeye özeldir");
     }
