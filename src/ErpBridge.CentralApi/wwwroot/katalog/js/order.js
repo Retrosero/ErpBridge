@@ -39,8 +39,9 @@ function sameBox(a, b) {
 }
 
 /**
- * Takes what the server says now (name, code, unit, carton, price, stock) into the cart's product
- * snapshots, so the cart page and the catalogue show today's figures. Quantities never change here.
+ * Takes what the server says now (name, code, unit, carton, price, stock, picture) into the cart's
+ * product snapshots, so the cart page and the catalogue show today's figures. Quantities never change here.
+ * A quote without `thumb` (an older server) keeps the snapshot's picture.
  * Lines the server no longer offers keep their snapshot. Returns { lines, priceChanged } where
  * `lines` is the same array when nothing differs and `priceChanged` counts lines whose price moved.
  */
@@ -60,12 +61,13 @@ export function refreshLines(lines, quote) {
             box: q.box || null,
             price: q.price,
             inStock: q.issue !== 'OUT_OF_STOCK',
-            thumb: old.thumb,
+            thumb: q.thumb !== undefined ? q.thumb : old.thumb,
         });
         const priceMoved = !!old.price && !samePrice(old.price, product.price);
         if (priceMoved) priceChanged += 1;
         if (!priceMoved && !!old.price === !!product.price && sameBox(old.box, product.box) && old.name === product.name
-            && old.code === product.code && old.unit === product.unit && old.inStock === product.inStock) {
+            && old.code === product.code && old.unit === product.unit && old.inStock === product.inStock
+            && (old.thumb || null) === product.thumb) {
             return line;
         }
         changed = true;

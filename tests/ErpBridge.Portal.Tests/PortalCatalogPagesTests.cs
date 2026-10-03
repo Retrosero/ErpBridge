@@ -346,6 +346,52 @@ public sealed class PortalCatalogPagesTests : PortalPageTestContext
     }
 
     [Fact]
+    public void A_product_without_a_catalog_picture_shows_what_customers_see_with_its_source()
+    {
+        var (api, _) = Setup();
+        const string xml = "https://img.appsgo.cloud/ABCD2345/xml/2026/10/aa-s.webp";
+        const string photo = "https://img.appsgo.cloud/ABCD2345/product/2026/10/bb-s.webp";
+        object Shown(object product, string? url, string? source)
+        {
+            var element = JsonSerializer.SerializeToElement(product);
+            var fields = element.EnumerateObject().ToDictionary(p => p.Name, p => (object?)p.Value);
+            fields["shownThumbUrl"] = url;
+            fields["shownSource"] = source;
+            return fields;
+        }
+        api.Answer(ProductsPath("Icecek"), new
+        {
+            revision = 7,
+            truncated = false,
+            items = new[]
+            {
+                Shown(Product("CAY-1", "Çay 1 kg", imageCount: 1, thumb: "/api/v1/catalog/img/aaa/s?h=1234abcd"), "/api/v1/catalog/img/aaa/s?h=1234abcd", "catalog"),
+                Shown(Product("CAY-2", "Çay 5 kg"), xml, "xml"),
+                Shown(Product("KAHVE", "Kahve"), photo, "product"),
+                Shown(Product("SU", "Su"), null, null),
+            },
+        });
+        api.Answer(ManifestPath, new { usedBytes = 0L, limitBytes = 1024L * 1024 * 1024, items = Array.Empty<object>() });
+        var cut = RenderLayoutTab();
+
+        cut.Find("tr[data-stock='CAY-1'] img.catalog-thumb").GetAttribute("src").Should().Be("https://sipariscepte.appsgo.cloud/api/v1/catalog/img/aaa/s?h=1234abcd");
+        cut.FindAll("tr[data-stock='CAY-1'] .catalog-thumb-source").Should().BeEmpty("the catalog's own picture needs no label");
+        cut.Find("tr[data-stock='CAY-2'] img.catalog-thumb").GetAttribute("src").Should().Be(xml);
+        cut.Find("tr[data-stock='CAY-2'] .catalog-thumb-source").TextContent.Should().Be("XML");
+        cut.Find("tr[data-stock='CAY-2'] .cell-sub").TextContent.Should().NotContain("görsel", "the count stays the catalog's own");
+        cut.Find("tr[data-stock='KAHVE'] img.catalog-thumb").GetAttribute("src").Should().Be(photo);
+        cut.Find("tr[data-stock='KAHVE'] .catalog-thumb-source").TextContent.Should().Be("Firma");
+        cut.FindAll("tr[data-stock='SU'] img").Should().BeEmpty();
+        cut.Find("tr[data-stock='SU'] .catalog-thumb--empty");
+
+        cut.Find("tr[data-stock='CAY-2'] .product-settings").Click();
+        cut.WaitForAssertion(() => cut.Find("#sheet-images-fallback").TextContent.Should().Contain("XML'den gelen görseli"));
+        cut.Find("#sheet-images-shown img").GetAttribute("src").Should().Be(xml);
+        cut.Find("#sheet-images-shown .badge").TextContent.Should().Be("XML");
+        cut.FindAll("#sheet-images-empty").Should().BeEmpty();
+    }
+
+    [Fact]
     public void A_rate_limited_upload_stops_and_asks_to_wait()
     {
         var (api, _) = Setup();

@@ -49,11 +49,26 @@ public sealed class ExpenseReceiptDocumentDto
     [JsonPropertyName("expenseCardCode")] public string? ExpenseCardCode { get; set; }
 }
 
-/// <summary><c>GET /api/v1/storage/products/images?stockCode=</c> (GOAL_DEPOLAMA_R2 S6): a product's own photos in order.</summary>
+/// <summary>
+/// <c>GET /api/v1/storage/products/images?stockCode=</c> (GOAL_DEPOLAMA_R2 S6): a product's own photos in order, and the
+/// server's copies of its XML feed pictures (S7) in the feed's order.
+/// </summary>
 public sealed class ProductImagesDto
 {
     [JsonPropertyName("stockCode")] public string StockCode { get; set; } = string.Empty;
     [JsonPropertyName("items")] public ProductImageDto[] Items { get; set; } = [];
+
+    /// <summary>Read-only: the XML sync writes and removes them.</summary>
+    [JsonPropertyName("xmlItems")] public ProductXmlImageDto[] XmlItems { get; set; } = [];
+}
+
+/// <summary>A picture the server copied from the company's XML feed: its 400 px and 1280 px WebP by their CDN addresses.</summary>
+public sealed class ProductXmlImageDto
+{
+    [JsonPropertyName("id")] public Guid Id { get; set; }
+    [JsonPropertyName("position")] public int Position { get; set; }
+    [JsonPropertyName("thumbUrl")] public string ThumbUrl { get; set; } = string.Empty;
+    [JsonPropertyName("fullUrl")] public string FullUrl { get; set; } = string.Empty;
 }
 
 /// <summary>A product photo: the server's 400 px and 1280 px WebP by their CDN addresses.</summary>

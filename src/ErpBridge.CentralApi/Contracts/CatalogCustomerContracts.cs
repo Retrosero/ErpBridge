@@ -255,6 +255,12 @@ public sealed class CatalogQuoteLineDto
 
     [JsonPropertyName("vatRate")] public decimal? VatRate { get; set; }
 
+    /// <summary>
+    /// The product's picture now (as <c>products</c>' <c>thumb</c>): the cart takes it over the one kept when the product
+    /// went in, so a picture added later (an XML sync, a product photo) shows in the cart too.
+    /// </summary>
+    [JsonPropertyName("thumb")] public string? Thumb { get; set; }
+
     /// <summary>VAT-exclusive list amount (an inclusive list price is first divided by 1 + rate).</summary>
     [JsonPropertyName("gross")] public decimal Gross { get; set; }
 

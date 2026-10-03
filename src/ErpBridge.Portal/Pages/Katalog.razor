@@ -231,9 +231,15 @@ else
                                             <tr data-stock="@row.StockCode" class="@(Changed(row, index) ? "is-changed" : null)">
                                                 <td data-label="Seç"><input type="checkbox" class="product-select" aria-label="@($"{row.Item.Name} seç")" checked="@row.Selected" @onchange="e => row.Selected = e.Value is true" /></td>
                                                 <td data-label="Görsel">
-                                                    @if (ImageSrc(row.Item.ThumbUrl) is { } src)
+                                                    @if (ImageSrc(row.Item.ShownThumbUrl ?? row.Item.ThumbUrl) is { } src)
                                                     {
-                                                        <img class="catalog-thumb" src="@src" alt="" loading="lazy" />
+                                                        <span class="catalog-thumb-wrap">
+                                                            <img class="catalog-thumb" src="@src" alt="" loading="lazy" />
+                                                            @if (CatalogProductDto.SourceBadge(row.Item.ShownSource) is { } source)
+                                                            {
+                                                                <span class="catalog-thumb-source" title="@SourceHint(row.Item.ShownSource)">@source</span>
+                                                            }
+                                                        </span>
                                                     }
                                                     else
                                                     {
@@ -740,7 +746,26 @@ else
         if (_sheetRow is not { } row) return;
         row.Item.ImageCount = images.Length;
         row.Item.ThumbUrl = images.FirstOrDefault()?.ThumbUrl;
+        if (images.Length > 0)
+        {
+            row.Item.ShownThumbUrl = row.Item.ThumbUrl;
+            row.Item.ShownSource = "catalog";
+        }
+        else if (row.Item.ShownSource == "catalog")
+        {
+            // The product photo or XML copy that now stands in is known on the next load.
+            row.Item.ShownThumbUrl = null;
+            row.Item.ShownSource = null;
+        }
     }
+
+    /// <summary>Why a product shows a picture that is not the catalog's own.</summary>
+    internal static string? SourceHint(string? source) => source switch
+    {
+        "product" => "Katalog görseli yok; müşteriler firmanın ürün fotoğrafını görür.",
+        "xml" => "Katalog görseli yok; müşteriler XML'den gelen görseli görür.",
+        _ => null,
+    };
 
     private string? ImageSrc(string? url) => CatalogImageAddress.Resolve(url, _settings?.PublicUrl, Api.BaseAddress);
 

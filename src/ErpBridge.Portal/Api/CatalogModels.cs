@@ -129,6 +129,23 @@ public sealed class CatalogProductDto
 
     /// <summary>The first image's small variant: a path on the public catalog host, or an https link.</summary>
     [JsonPropertyName("thumbUrl")] public string? ThumbUrl { get; set; }
+
+    /// <summary>
+    /// The first picture customers see: the catalog's own, else the company's product photo, else the XML feed's copy
+    /// (GOAL_DEPOLAMA_R2 S6/S7). <see cref="ImageCount"/> and <see cref="ThumbUrl"/> stay the catalog's own.
+    /// </summary>
+    [JsonPropertyName("shownThumbUrl")] public string? ShownThumbUrl { get; set; }
+
+    /// <summary><c>catalog</c>, <c>product</c>, <c>xml</c>; null without a picture.</summary>
+    [JsonPropertyName("shownSource")] public string? ShownSource { get; set; }
+
+    /// <summary>The label of a picture that is not the catalog's own: "Firma" (product photo), "XML"; null otherwise.</summary>
+    public static string? SourceBadge(string? source) => source switch
+    {
+        "product" => "Firma",
+        "xml" => "XML",
+        _ => null,
+    };
 }
 
 /// <summary><c>PUT products</c>: only the products given change (at most 5000).</summary>

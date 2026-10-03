@@ -1717,9 +1717,11 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      = 4; `RolePermissions.CanEditProductPhotos`) — `action.products.edit` (ERP'siz kart düzenleme, yalnız Admin) bilerek kullanılmadı:
      fotoğraf ERP kartına dokunmaz, sahada çekilir. Modül gerekmez. Web katalog: `CatalogProduct.ProductPhotos` (görünüm onları da yükler),
      müşteriye `ShownPictures`/`ShownThumbUrl` — katalog görseli varsa o, yoksa ürün fotoğrafı (`CustomerCatalogPublicEndpoints`, talep
-     detayındaki küçük resim de); katalog yönetimi (`ImageCount`, manifest) yalnız katalog görsellerini sayar. Panel: Stok sayfasında ürün
+     detayındaki küçük resim de); katalog yönetimi (`ImageCount`, `ThumbUrl`, manifest) yalnız katalog görsellerini sayar — telefonun
+     katalog yönetimi bunları kullanır, anlamları değişmez. Panel: Stok sayfasında ürün
      detayına `Shared/ProductPhotos.razor` (küçük resim, büyük resim yeni sekmede, yükleme küçültmeden, "Kapak yap", sil; yetki yoksa
-     yalnız gösterir). Testler `Storage/ProductImageRelationalTests`, Portal `PortalProductPhotosTests`.
+     yalnız gösterir; ardından ürünün XML kopyaları "XML'den" etiketiyle, salt okunur, 2026-10-03). Testler
+     `Storage/ProductImageRelationalTests`, Portal `PortalProductPhotosTests`.
    - **XML görselleri (S7)** `Storage/XmlImageSync` + `XmlImageSyncWorker`, tablo `xml_images` (R3, R6): sunucu firmanın kayıtlı XML
      beslemesini (`tenant_xml_feed_settings`) **telefonun kurallarıyla** okur — `Storage/XmlFeedImageReader`, Sipariş Cepte
      `XmlFeedScanner.forEachRecord` + `XmlFeedReader.toItem`'in birebir karşılığı (kayıt yolu kökten tam yol, ön ekler yazıldığı gibi,
@@ -1749,7 +1751,15 @@ değişmez olarak sabitler — o testler kırılıyorsa soyutlama gerilemiş dem
      testte kapalı): dakikada bir bekleyen firmaları en eski istek önce, birer birer; her gün `MaintenanceHourUtc + 1` saatinde (UTC)
      XML modülü ve görsel indirmesi açık her firmaya istek koyar (`RequestAllAsync`). **Uçlar** `Endpoints/XmlImageEndpoints`:
      `GET /api/v1/storage/xml-images/status`, `POST …/sync` (202) — yalnız `action.storage.manage` (`403 STORAGE_FORBIDDEN`).
-     **Kullanım:** `CatalogProduct.XmlPhotos`; müşteriye `ShownPictures` = katalog görseli → ürün fotoğrafı → XML görseli. Ürün
+     **Kullanım:** `CatalogProduct.XmlPhotos`; müşteriye `ShownPictures` = katalog görseli → ürün fotoğrafı → XML görseli
+     (`ShownSource` `catalog|product|xml`, `CatalogPictureSources`). **Ürün görseli gösteren her yer bu zinciri `CatalogView`'dan
+     okur, tabloları ayrı ayrı sorgulamaz** (2026-10-03 düzeltmesi; firmada yalnız XML görseli varken talep detayı ve panel boş
+     kalıyordu): müşteri `products` `thumb`, `products/detail` `images`, `cart/quote` satır `thumb`'ı (sepet, ürün sepete girdikten
+     sonra gelen görseli bununla alır — `order.js` `refreshLines`), `orders/detail` satır `thumb`'ı (`views.LoadAsync(forCustomer:
+     true)`; stokta kartı kalmayan üründe null); katalog yönetimi `GET products` `shownThumbUrl` + `shownSource` (panelin Katalog
+     listesi bu küçük resmi "XML"/"Firma" rozetiyle, ürün sayfası katalog görseli yokken yerine geçeni gösterir). Web katalog CSP'si
+     `img-src 'self' https: data:` CDN'i kapsar. Test `Endpoints/CustomerCatalogXmlPicturesRelationalTests` (yalnız XML görselli
+     firma uçtan uca). Ürün
      fotoğrafı `GET ?stockCode=` ve `GET /manifest` yanıtlarına salt okunur `xmlItems` eklendi (`XmlImage { id, stockCode, position,
      sourceUrl, thumbUrl, fullUrl, … }`, XML sırasıyla) — telefon (A4) sunucu kopyası varken kendisi indirmesin diye. Testler
      `Storage/XmlImageSyncRelationalTests`, `XmlFeedImageReaderTests`, `SafeHttpFetcherTests`, `Security/WebhookTargetValidatorTests`.

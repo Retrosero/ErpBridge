@@ -170,6 +170,15 @@ public sealed class CatalogProductDto
 
     /// <summary>The first picture: a relative <c>/api/v1/catalog/img/…</c> path or an https link.</summary>
     [JsonPropertyName("thumbUrl")] public string? ThumbUrl { get; set; }
+
+    /// <summary>
+    /// The first picture a customer sees: the catalog's (as <see cref="ThumbUrl"/>), else the company's product photo, else the
+    /// XML feed's copy (both CDN addresses). <see cref="ImageCount"/> and <see cref="ThumbUrl"/> stay the catalog's own.
+    /// </summary>
+    [JsonPropertyName("shownThumbUrl")] public string? ShownThumbUrl { get; set; }
+
+    /// <summary>Where <see cref="ShownThumbUrl"/> comes from: <c>catalog</c>, <c>product</c>, <c>xml</c>; null without a picture.</summary>
+    [JsonPropertyName("shownSource")] public string? ShownSource { get; set; }
 }
 
 /// <summary><c>PUT products</c>: only the products given change (at most 5000).</summary>
