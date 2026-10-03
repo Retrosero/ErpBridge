@@ -22,6 +22,13 @@ public sealed class PortalProductPhotosTests : PortalPageTestContext
 
     private static object Photos(params object[] items) => new { stockCode = "A", items };
 
+    private static object Xml(Guid id, int position) => new
+    {
+        id, stockCode = "A", position, sourceUrl = $"https://tedarikci.example.com/{position}.jpg",
+        thumbUrl = $"https://img.test/ABC/xml/{id:N}-s.webp", fullUrl = $"https://img.test/ABC/xml/{id:N}-l.webp",
+        width = 1280, height = 960, sizeBytes = 1000, createdAtMs = 1L, updatedAtMs = 1L,
+    };
+
     [Fact]
     public void Shows_the_photos_and_sends_a_picked_file_as_it_is()
     {
@@ -66,5 +73,43 @@ public sealed class PortalProductPhotosTests : PortalPageTestContext
         readOnly.WaitForAssertion(() => readOnly.FindAll(".product-photo").Count.Should().Be(2));
         readOnly.FindAll("button").Should().BeEmpty();
         readOnly.FindComponents<InputFile>().Should().BeEmpty();
+    }
+
+    [Fact]
+    public void The_xml_copies_follow_the_companys_photos_read_only()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        var xmlFirst = Guid.NewGuid();
+        var xmlSecond = Guid.NewGuid();
+        api.Answer(List, new { stockCode = "A", items = new[] { Photo(First, 0) }, xmlItems = new[] { Xml(xmlFirst, 0), Xml(xmlSecond, 1) } });
+
+        var cut = Render<ProductPhotos>(p => p.Add(x => x.StockCode, "A").Add(x => x.CanEdit, true));
+
+        cut.WaitForAssertion(() => cut.FindAll(".product-photo").Count.Should().Be(3));
+        cut.FindAll(".product-photo").Select(f => f.GetAttribute("data-photo") ?? f.GetAttribute("data-xml-photo"))
+            .Should().Equal([First.ToString(), xmlFirst.ToString(), xmlSecond.ToString()], "the company's photos first, then the feed's in its order");
+        cut.Find($"[data-xml-photo='{xmlFirst}'] img").GetAttribute("src").Should().EndWith("-s.webp");
+        cut.Find($"[data-xml-photo='{xmlFirst}'] a").GetAttribute("href").Should().EndWith("-l.webp");
+        cut.Find($"[data-xml-photo='{xmlFirst}'] figcaption").TextContent.Should().Contain("XML'den");
+        cut.FindAll("[data-xml-photo] button").Should().BeEmpty("the XML sync owns them: no cover, no delete");
+        cut.Find("#product-photos-xml-hint");
+        cut.FindAll("#product-photos-empty").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Only_xml_copies_are_not_an_empty_list_and_nothing_at_all_is()
+    {
+        var (api, _, _) = PortalTestSetup.Register(this, signedIn: PortalTestSetup.State());
+        var xml = Guid.NewGuid();
+        api.Answer(List, new { stockCode = "A", items = Array.Empty<object>(), xmlItems = new[] { Xml(xml, 0) } });
+
+        var cut = Render<ProductPhotos>(p => p.Add(x => x.StockCode, "A").Add(x => x.CanEdit, false));
+        cut.WaitForAssertion(() => cut.Find($"[data-xml-photo='{xml}']"));
+        cut.FindAll("#product-photos-empty").Should().BeEmpty();
+
+        api.Answer("/api/v1/storage/products/images?stockCode=B", new { stockCode = "B", items = Array.Empty<object>(), xmlItems = Array.Empty<object>() });
+        var empty = Render<ProductPhotos>(p => p.Add(x => x.StockCode, "B").Add(x => x.CanEdit, false));
+        empty.WaitForAssertion(() => empty.Find("#product-photos-empty").TextContent.Should().Be("Fotoğraf yok."));
+        empty.FindAll(".product-photo").Should().BeEmpty();
     }
 }

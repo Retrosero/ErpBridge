@@ -40,6 +40,7 @@ public static class CatalogQuote
                 Box = Box(product),
                 Price = Price(customer, product),
                 VatRate = product.VatRate,
+                Thumb = product.ShownThumbUrl,
             };
             if (quantity <= 0m || quantity > MaxQuantity || quantity != decimal.Truncate(quantity))
             {

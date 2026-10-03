@@ -18,6 +18,19 @@ public sealed record CatalogPriceList(int No, string Name, bool IncludesVat);
 /// <summary>A picture with something to show (a link, or a file with at least one size uploaded).</summary>
 public sealed record CatalogPicture(Guid Id, string ThumbUrl, string FullUrl);
 
+/// <summary>The source of the pictures a customer sees for a product (<see cref="CatalogProduct.ShownSource"/>).</summary>
+public static class CatalogPictureSources
+{
+    /// <summary>The catalog's own pictures.</summary>
+    public const string Catalog = "catalog";
+
+    /// <summary>The company's product photos (GOAL_DEPOLAMA_R2 S6).</summary>
+    public const string Product = "product";
+
+    /// <summary>The server's copies of the XML feed's pictures (GOAL_DEPOLAMA_R2 S7).</summary>
+    public const string Xml = "xml";
+}
+
 /// <summary>One product as the catalog shows it: the ERP card with the company's catalog settings laid over it.</summary>
 /// <param name="InStock">All warehouses together, rounded as the phone rounds, is at least 1 (T9); the count itself is never shown (K6).</param>
 /// <param name="ErpCartonQuantity">The ERP's carton (<see cref="CatalogViewService.ErpCartonQuantity"/>).</param>
@@ -48,6 +61,13 @@ public sealed record CatalogProduct(
     public IReadOnlyList<CatalogPicture> ShownPictures => Pictures.Count > 0 ? Pictures : ProductPhotos.Count > 0 ? ProductPhotos : XmlPhotos;
 
     public string? ShownThumbUrl => ShownPictures.Count > 0 ? ShownPictures[0].ThumbUrl : null;
+
+    /// <summary>Where <see cref="ShownPictures"/> come from (<see cref="CatalogPictureSources"/>); null when there are none.</summary>
+    public string? ShownSource =>
+        Pictures.Count > 0 ? CatalogPictureSources.Catalog
+        : ProductPhotos.Count > 0 ? CatalogPictureSources.Product
+        : XmlPhotos.Count > 0 ? CatalogPictureSources.Xml
+        : null;
 
     /// <summary>The price in one list; null when the product has none there (the customer of that list does not see it).</summary>
     public decimal? PriceIn(int? listNo) => listNo is { } no && Prices.TryGetValue(no, out var price) ? price : null;

@@ -251,6 +251,8 @@ public static class CustomerCatalogManageEndpoints
                 InStock = p.InStock,
                 ImageCount = p.Pictures.Count,
                 ThumbUrl = p.ThumbUrl,
+                ShownThumbUrl = p.ShownThumbUrl,
+                ShownSource = p.ShownSource,
             })],
         });
     }

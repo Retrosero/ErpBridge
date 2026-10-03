@@ -161,7 +161,7 @@ internal static class CatalogCustomerOrderEndpoints
         return JsonResults.Ok(new CatalogCustomerOrdersResponse { Items = [.. orders.Select(o => Fill(new CatalogCustomerOrderDto(), o))] });
     }
 
-    private static async Task<IResult> DetailAsync(HttpContext http, string? id, [FromServices] CentralApiDbContext db, [FromServices] IOptions<StorageOptions> storage,
+    private static async Task<IResult> DetailAsync(HttpContext http, string? id, [FromServices] CentralApiDbContext db, [FromServices] CatalogViewService views,
         CancellationToken ct)
     {
         var session = CatalogSession.Of(http);
@@ -172,23 +172,12 @@ internal static class CatalogCustomerOrderEndpoints
         var detail = Fill(new CatalogCustomerOrderDetailDto(), order);
         detail.Note = order.Note;
         var lines = CatalogOrders.Lines(order);
-        var codes = lines.Select(l => l.StockCode).ToArray();
-        // Only pictures of this account's own order, within its tenant; no blob bytes or per-line queries.
-        var pictures = await db.CatalogImages.AsNoTracking()
-            .Where(i => i.TenantId == session.Tenant.Id && codes.Contains(i.StockCode))
-            .OrderBy(i => i.SortOrder).ThenBy(i => i.CreatedAtMs).ThenBy(i => i.Id).ToListAsync(ct);
-        // A product without a catalog picture shows the company's own product photo (GOAL_DEPOLAMA_R2 S6), as the catalog does.
-        var photos = ProductImage.InOrder(await db.ProductImages.AsNoTracking()
-            .Where(i => i.TenantId == session.Tenant.Id && codes.Contains(i.StockCode)).ToListAsync(ct)).ToList();
-        var urls = await CatalogFileUrls.LoadAsync(db, storage.Value, session.Tenant.Id,
-            pictures.SelectMany(CatalogImages.StoredFileIds).Concat(photos.Select(p => p.StoredFileSmallId)), ct);
-        var thumbs = pictures.GroupBy(i => i.StockCode, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.Select(i => CatalogImages.ThumbUrl(i, urls)).FirstOrDefault(url => url is not null), StringComparer.OrdinalIgnoreCase);
-        foreach (var photo in photos)
-            if (thumbs.GetValueOrDefault(photo.StockCode) is null && urls.Of(photo.StoredFileSmallId) is { } thumb) thumbs[photo.StockCode] = thumb;
+        // Each line shows what the catalog shows for its product (catalog picture, else product photo, else XML copy), from
+        // this tenant's view; a product no longer in the stock has none.
+        var view = await views.LoadAsync(db, session.Tenant.Id, forCustomer: true, ct);
         detail.Lines = [.. lines.Select(l => new CatalogCustomerOrderLineDto
         {
-            Thumb = thumbs.GetValueOrDefault(l.StockCode),
+            Thumb = view.Products.GetValueOrDefault(l.StockCode)?.ShownThumbUrl,
             Key = l.StockCode,
             Code = l.StockCode,
             Name = l.Name,

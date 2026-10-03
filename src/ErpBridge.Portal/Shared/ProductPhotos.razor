@@ -1,6 +1,7 @@
 @* GOAL_DEPOLAMA_R2 S6: a product's own photos on the Stok page's product detail. The photo goes up as picked (at most
    10 MB); the server turns it upright, drops its metadata and makes the two WebP sizes, so nothing is shrunk here. Only
-   the picture changes, never the product card: an ERP company uses it too. Changes reach the server at once. *@
+   the picture changes, never the product card: an ERP company uses it too. Changes reach the server at once. After them
+   the server's copies of the XML feed's pictures (S7), read-only: the XML sync adds and removes them. *@
 @inject PortalApiClient Api
 
 <div class="product-photos" data-photos="@StockCode">
@@ -15,7 +16,7 @@
     }
     else
     {
-        @if (_photos.Length == 0)
+        @if (_photos.Length == 0 && _xml.Length == 0)
         {
             <p class="text-muted" id="product-photos-empty">Fotoğraf yok.</p>
         }
@@ -36,7 +37,18 @@
                     }
                 </figure>
             }
+            @foreach (var xml in _xml)
+            {
+                <figure class="product-photo product-photo--xml" data-xml-photo="@xml.Id">
+                    <a href="@xml.FullUrl" target="_blank" rel="noopener noreferrer"><img src="@xml.ThumbUrl" alt="XML görseli" loading="lazy" /></a>
+                    <figcaption><span class="badge badge--muted">XML'den</span></figcaption>
+                </figure>
+            }
         </div>
+        @if (_xml.Length > 0)
+        {
+            <p class="field-hint" id="product-photos-xml-hint">XML'den gelen görseller XML eşitlemesiyle güncellenir; buradan silinemez. Firmanın fotoğrafı varsa önce o gösterilir.</p>
+        }
         @if (CanEdit && _photos.Length < MaxPhotos)
         {
             <label class="inline-field product-photo-upload">
@@ -61,6 +73,7 @@
     [Parameter] public EventCallback<string> OnSessionEnded { get; set; }
 
     private ProductImageDto[]? _photos;
+    private ProductXmlImageDto[] _xml = [];
     private string? _loadedFor;
     private bool _busy;
     private string? _error;
@@ -70,10 +83,16 @@
         if (_loadedFor == StockCode) return;
         _loadedFor = StockCode;
         _photos = null;
+        _xml = [];
         await RunAsync(LoadAsync);
     }
 
-    private async Task LoadAsync() => _photos = (await Api.ProductImagesAsync(StockCode)).Items;
+    private async Task LoadAsync()
+    {
+        var images = await Api.ProductImagesAsync(StockCode);
+        _photos = images.Items;
+        _xml = images.XmlItems;
+    }
 
     /// <summary>One file at a time; a file the server refuses stops the rest with its message.</summary>
     private Task UploadAsync(InputFileChangeEventArgs e) => RunAsync(async () =>

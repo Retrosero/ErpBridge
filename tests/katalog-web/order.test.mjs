@@ -83,6 +83,21 @@ test('refreshLines: carton and stock from the server; NOT_AVAILABLE keeps the sn
     assert.equal(out.lines[0].product.inStock, false);
 });
 
+test('refreshLines: the picture comes from the quote; a quote without one keeps the snapshot', () => {
+    const lines = cartOf([simit, 3], [kola, 48]);
+    const xml = 'https://img.test/ABC/xml/2026/10/k-s.webp';
+    const result = refreshLines(lines, { lines: [quoteLine(simit, 3), quoteLine(kola, 48, { thumb: xml })] });
+    assert.notEqual(result.lines, lines, 'a picture added after the product went in reaches the cart');
+    assert.equal(result.lines[0], lines[0], 'no thumb in the quote keeps the line');
+    assert.equal(result.lines[1].product.thumb, xml);
+    assert.equal(result.priceChanged, 0);
+
+    const same = refreshLines(result.lines, { lines: [quoteLine(simit, 3, { thumb: '/img/a' }), quoteLine(kola, 48, { thumb: xml })] });
+    assert.equal(same.lines, result.lines, 'the same picture changes nothing');
+    const gone = refreshLines(result.lines, { lines: [quoteLine(simit, 3, { thumb: null }), quoteLine(kola, 48, { thumb: xml })] });
+    assert.equal(gone.lines[0].product.thumb, null, 'a removed picture leaves the line');
+});
+
 test('createRequestIds: one id per cart content until forgotten', () => {
     let n = 0;
     const ids = createRequestIds(() => 'id-' + (++n));

@@ -411,7 +411,9 @@ Telefon ve panel ortak; firma kullanıcısı token'ı, hız sınırı kullanıc�
 - **`GET products?category=&q=`:** `category` kategorinin tamamı (≤ 5000), `q` ad/kod/marka/barkod tr-TR harf duyarsız (≤ 50),
   ikisi birlikte kategori içinde arar; hiçbiri yoksa tüm katalog (≤ 5000). `truncated` fazlası olduğunu söyler. `listPrice`
   firmanın etkin varsayılan listesinden; `cartonOnly` geçerli olanı (istenmiş ve etkin koli ≥ 2), `cartonQuantity` firmanın
-  kendi kolisi.
+  kendi kolisi. `imageCount`/`thumbUrl` yalnız katalog görselleridir (telefonun katalog yönetimi bunları sayar);
+  `shownThumbUrl` müşterinin gördüğü ilk görsel (katalog görseli, yoksa firmanın ürün fotoğrafı, o da yoksa XML kopyası — son
+  ikisi tam CDN adresi), `shownSource` kaynağı: `catalog|product|xml`, görsel yoksa null.
 - **`PUT products`:** ≤ 5000; verilen her ürünün tüm ayarları yazılır, hepsi varsayılana dönen ürünün satırı silinir.
   `cartonQuantity` 2–100000 (`400 INVALID_CARTON_QUANTITY`); etkin koli yokken `cartonOnly` `400 CARTON_QUANTITY_REQUIRED`.
 - **Hesaplar:** cari `PortalLedger` carilerinden doğrulanır (`404 CUSTOMER_NOT_FOUND`), hesap kartın kodunu saklar. Kullanıcı
@@ -605,7 +607,8 @@ burada sunucunun seçtiği ayrıntılar. Ayrıntı: KB 00 kural 36.
   Satır başına sunucu fiyatı (`CatalogPricing`, telefonun `ErpSalePricing`'i); `issue`: görünmeyen/olmayan → `NOT_AVAILABLE`
   (ürün hakkında hiçbir bilgi dönmez: `code/name/unit/box/price/vatRate` null, tutarlar 0); miktar tam sayı değil, ≤ 0 ya da
   100000'den büyük → `INVALID_QUANTITY` (tutarlar 0); stokta yok → `OUT_OF_STOCK`; yalnız-koli üründe koli katı değil →
-  `CARTON_MULTIPLE` (bu ikisi fiyatlanır). `totals` yalnız sorunsuz satırların toplamıdır.
+  `CARTON_MULTIPLE` (bu ikisi fiyatlanır). `totals` yalnız sorunsuz satırların toplamıdır. Satırın `thumb`'ı ürünün şimdiki
+  küçük resmi (`products`'taki gibi; görünmeyen üründe null) — sepet, ürün sepete girdikten sonra gelen görseli de bununla gösterir.
 - **`POST orders {requestId, lines[{key, quantity}], note, expectedTotal}`** (S8, `Endpoints/CatalogCustomerOrderEndpoints`):
   `requestId` boş, `lines` boş ya da 200'den fazla, `expectedTotal` yok, `note` 1000 karakterden uzun → `400 INVALID_BODY`.
   Sıra: aynı `requestId` bu hesabınsa aynı talep aynı `201 {order}` ile döner (başka hesabın/firmanın kimliğiyse içerik vermeden
@@ -619,7 +622,8 @@ burada sunucunun seçtiği ayrıntılar. Ayrıntı: KB 00 kural 36.
   carinin plasiyer kodu (`salespersonCode`, kırpılmış, harf duyarsız) → `MobileUserErpMapping.SalespersonCode` → aktif kullanıcı
   (bu kişi `AssignedUserId` olur), artı aktif katalog yöneticileri; herkese bir kez.
 - **`GET orders`:** hesabın en yeni 100 talebi. **`GET orders/detail?id=`:** başkasının/bilinmeyen `404 NOT_FOUND`; satırlar
-  `{key, code, name, quantity, net, total}` talebin fiyatıyla.
+  `{key, code, name, quantity, net, total, thumb}` talebin fiyatıyla; `thumb` ürünün katalogdaki şimdiki küçük resmi (katalog
+  görseli → ürün fotoğrafı → XML kopyası; stokta kartı kalmayan üründe null).
 - **Hesabım (S9, `Endpoints/CatalogCustomerLedgerEndpoints`):** bayrak kapalıysa `403 FEATURE_DISABLED` (`statement` ←
   `ShowStatement`, `invoices*` ← `ShowInvoices`, `purchased` ← `ShowPurchased`). Kaynak panelin aynaları (`PortalLedger`); cari
   aynada yoksa boş. `from`/`to` `yyyy-MM-dd` (bozuksa `400 INVALID_BODY`).
@@ -693,8 +697,9 @@ değil: ERP'li firmada da çalışır, modül gerekmez. Yazım yetkisi `action.p
 | `DELETE /api/v1/storage/products/images/{id}` | `action.products.photo` | `204`, iki dosya çöpe; yok/başka firma `404 PRODUCT_IMAGE_NOT_FOUND` |
 
 Web katalog bir ürünün görseli olarak önce katalog görsellerini, yoksa ürün fotoğraflarını, o da yoksa XML görsellerini (S7)
-gösterir (`products`/`products/detail` `thumb` ve `images`, talep detayındaki küçük resim); katalog yönetimi (`images/manifest`,
-`imageCount`) yalnız katalog görsellerini sayar.
+gösterir (`products`/`products/detail` `thumb` ve `images`, `cart/quote` satır `thumb`'ı, talep detayındaki küçük resim); katalog
+yönetimi (`images/manifest`, `imageCount`, `thumbUrl`) yalnız katalog görsellerini sayar, müşterinin gördüğünü `shownThumbUrl` +
+`shownSource` söyler.
 
 **XML görselleri (S7)** — sunucu firmanın kayıtlı XML beslemesini (`/api/v1/android/xml-feed/config`) telefonla aynı kurallarla
 okur, kodu firmanın ürünleriyle (büyük/küçük harf duyarsız) eşleştirir ve ürün başı ilk 6 görsel adresini indirip 1280/400 px WebP

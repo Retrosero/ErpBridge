@@ -64,7 +64,23 @@
                 }
                 @if (_loaded && _images.Count == 0)
                 {
-                    <p class="text-muted" id="sheet-images-empty">Bu ürünün görseli yok.</p>
+                    @if (CatalogProductDto.SourceBadge(row.Item.ShownSource) is { } source
+                         && CatalogImageAddress.Resolve(row.Item.ShownThumbUrl, PublicUrl, Api.BaseAddress) is { } shown)
+                    {
+                        <div class="image-grid" id="sheet-images-shown">
+                            <figure class="catalog-image" data-shown-source="@row.Item.ShownSource">
+                                <img src="@shown" alt="@($"{row.Item.Name} görseli")" loading="lazy" />
+                                <figcaption><span class="badge badge--info">@source</span></figcaption>
+                            </figure>
+                        </div>
+                        <p class="field-hint" id="sheet-images-fallback">
+                            Katalog görseli yok; müşteriler @(row.Item.ShownSource == "xml" ? "XML'den gelen görseli" : "firmanın ürün fotoğrafını") görür. Buradan eklenen görsel onun yerine geçer.
+                        </p>
+                    }
+                    else
+                    {
+                        <p class="text-muted" id="sheet-images-empty">Bu ürünün görseli yok.</p>
+                    }
                 }
                 <div class="image-grid" id="sheet-images">
                     @foreach (var (image, index) in _images.Select((m, i) => (m, i)))
