@@ -912,3 +912,25 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
     .storage-list { grid-template-columns: 1fr; }
     .storage-actions .mud-button-root { flex: 1 1 100%; }
 }
+
+/* Full-width, compact workspace for content and key figures. */
+.portal-container.mud-container{max-width:none;width:100%;padding:1.25rem 1.25rem 2rem}
+.page-header{gap:.75rem;margin-bottom:1rem}
+.page-header h1{font-size:clamp(1.5rem,2vw,1.85rem)}
+.stat-grid,.stat-grid--three,.stat-grid--four{grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.75rem}
+.portal-stat{gap:.35rem;padding:.85rem 1rem;border-radius:.5rem;box-shadow:none}
+.portal-stat-label{font-size:.78rem}
+.portal-stat-icon{width:2rem;height:2rem;border-radius:.5rem}
+.portal-stat-value{font-size:clamp(1.25rem,1.7vw,1.6rem);line-height:1.15;margin-top:0;overflow-wrap:anywhere}
+.portal-stat-caption{font-size:.73rem;overflow-wrap:anywhere}
+.panel.mud-paper{border-radius:.5rem;box-shadow:none;padding:1rem}
+.panel--table.mud-paper{padding:0}
+.panel-head{margin-bottom:.75rem}
+@media (max-width:600px){
+    .portal-container.mud-container{padding:1rem .75rem 1.5rem}
+    .stat-grid,.stat-grid--three,.stat-grid--four{grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}
+    .portal-stat{padding:.7rem .75rem}
+    .portal-stat-value{font-size:clamp(1.1rem,4.5vw,1.3rem)}
+    .panel.mud-paper{padding:.85rem}
+    .panel--table.mud-paper{padding:0}
+}

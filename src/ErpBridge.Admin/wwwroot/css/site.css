@@ -27,3 +27,25 @@
 .skip-link{position:fixed;top:.75rem;left:1rem;z-index:1000;background:var(--surface);color:var(--primary);border-radius:.5rem;padding:.75rem 1rem;transform:translateY(-160%)}.skip-link:focus{transform:none}
 @media(max-width:1023.98px){.admin-topbar__title>.admin-brand__mark{display:flex}.admin-topbar__title{margin-right:auto}.admin-content{padding:1.5rem 1.25rem 2.5rem}.admin-page-header__actions>.btn{width:auto}.admin-grid--stats{gap:1rem}}
 @media(max-width:600px){.admin-content{padding:1.5rem 1rem 2.5rem}.admin-stat{padding:1rem}.admin-grid--stats{gap:.75rem}.admin-page-header__actions>.btn{width:100%}.admin-topbar__title .admin-brand__mark{display:none}.admin-panel__header,.admin-panel__body{padding:1.15rem}}
+
+/* Full-width, compact workspace for data-heavy admin pages. */
+.admin-content{max-width:none;margin:0;padding:1.25rem 1.25rem 2rem}
+.admin-page-header{gap:.75rem;margin-bottom:1rem}
+.admin-page-header h1{font-size:clamp(1.5rem,2vw,1.85rem)}
+.admin-page-header__eyebrow{margin-bottom:.3rem}
+.admin-grid--stats{gap:.75rem;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));margin-bottom:1rem}
+.admin-stat{border-radius:.5rem;padding:.85rem 1rem;overflow-wrap:anywhere}
+.admin-stat__label{font-size:.78rem;margin-bottom:.3rem}
+.admin-stat strong{font-size:clamp(1.35rem,1.7vw,1.65rem);line-height:1.15}
+.admin-stat small{font-size:.73rem;margin-top:.25rem}
+.admin-panel,.admin-data-surface,.card,.admin-form-card{border-radius:.5rem;box-shadow:none}
+.admin-panel__header,.card-header{min-height:3.25rem;padding:.85rem 1rem}
+.admin-panel__body,.card-body{padding:1rem}
+.admin-filter-bar{gap:.75rem;margin-bottom:1rem;padding:.85rem 1rem}
+@media(max-width:600px){
+    .admin-content{padding:1rem .75rem 1.5rem}
+    .admin-grid--stats{gap:.5rem;grid-template-columns:repeat(2,minmax(0,1fr))}
+    .admin-stat{padding:.7rem .75rem}
+    .admin-stat strong{font-size:clamp(1.15rem,4.5vw,1.35rem)}
+    .admin-panel__header,.admin-panel__body,.card-header,.card-body{padding:.85rem}
+}
